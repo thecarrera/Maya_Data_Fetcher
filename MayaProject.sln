@@ -1,0 +1,41 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27130.2020
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MayaProject", "MayaProject\MayaProject.vcxproj", "{171CCC11-37A2-4F9F-A43F-D5C5B79AFAFC}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MayaPlugin", "MayaPlugin\MayaPlugin.vcxproj", "{25106A40-E4FD-4470-89FF-6BE55CDEC3D9}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{171CCC11-37A2-4F9F-A43F-D5C5B79AFAFC}.Debug|x64.ActiveCfg = Debug|x64
+		{171CCC11-37A2-4F9F-A43F-D5C5B79AFAFC}.Debug|x64.Build.0 = Debug|x64
+		{171CCC11-37A2-4F9F-A43F-D5C5B79AFAFC}.Debug|x86.ActiveCfg = Debug|Win32
+		{171CCC11-37A2-4F9F-A43F-D5C5B79AFAFC}.Debug|x86.Build.0 = Debug|Win32
+		{171CCC11-37A2-4F9F-A43F-D5C5B79AFAFC}.Release|x64.ActiveCfg = Release|x64
+		{171CCC11-37A2-4F9F-A43F-D5C5B79AFAFC}.Release|x64.Build.0 = Release|x64
+		{171CCC11-37A2-4F9F-A43F-D5C5B79AFAFC}.Release|x86.ActiveCfg = Release|Win32
+		{171CCC11-37A2-4F9F-A43F-D5C5B79AFAFC}.Release|x86.Build.0 = Release|Win32
+		{25106A40-E4FD-4470-89FF-6BE55CDEC3D9}.Debug|x64.ActiveCfg = Debug|x64
+		{25106A40-E4FD-4470-89FF-6BE55CDEC3D9}.Debug|x64.Build.0 = Debug|x64
+		{25106A40-E4FD-4470-89FF-6BE55CDEC3D9}.Debug|x86.ActiveCfg = Debug|Win32
+		{25106A40-E4FD-4470-89FF-6BE55CDEC3D9}.Debug|x86.Build.0 = Debug|Win32
+		{25106A40-E4FD-4470-89FF-6BE55CDEC3D9}.Release|x64.ActiveCfg = Release|x64
+		{25106A40-E4FD-4470-89FF-6BE55CDEC3D9}.Release|x64.Build.0 = Release|x64
+		{25106A40-E4FD-4470-89FF-6BE55CDEC3D9}.Release|x86.ActiveCfg = Release|Win32
+		{25106A40-E4FD-4470-89FF-6BE55CDEC3D9}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {36C637D1-4B96-4C56-BEB6-51250A44DBA7}
+	EndGlobalSection
+EndGlobal
