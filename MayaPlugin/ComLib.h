@@ -6,7 +6,7 @@
 #include <wrl.h>
 
 #define THREADCOUNT 2
-#define STSIZE 4
+#define STSIZE sizeof(size_t)
 
 using namespace Microsoft::WRL;
 
@@ -20,7 +20,7 @@ public:
 	{
 		handle = CreateMutex(nullptr, false, "Global\\sharedMutex");
 
-		if (handle == NULL)
+		if (!handle)
 		{
 			printf("CreateMutex error: %d\n", GetLastError());
 			getchar();
@@ -84,26 +84,26 @@ public:
 		SESURFACE,
 		VERTEX,
 		VERTEXID,
-		NORMAL,
-		NORMALID,
-		UVSETS,
-		UVSET,
-		UV,
-		UVID,
+		//NORMAL,
+		//NORMALID,
+		//UVSETS,
+		//UVSET,
+		//UV,
+		//UVID,
 		MESHSHADERS,
 		POINTINTENSITY
 	};
 	
 	struct Header
 	{
-		MSG_TYPE msgId = MSG_TYPE::DUMMY;
-		ATTRIBUTE_TYPE attrID = ATTRIBUTE_TYPE::NONE;
-		size_t msgSeq = 0;
-		size_t msgLength = 0;
+		MSG_TYPE		msgId		{ MSG_TYPE::DUMMY };
+		ATTRIBUTE_TYPE	attrID		{ ATTRIBUTE_TYPE::NONE };
+		size_t			msgSeq		{};
+		size_t			msgLength	{};
 	};
 
 	// create a ComLib
-	ComLib(const std::string& fileMapName, const size_t& buffSize);
+	ComLib(const std::string& fileMapName, const DWORD& buffSize);
 	/* disconnect and destroy all resources */
 	~ComLib();
 
@@ -114,7 +114,7 @@ public:
 	// returns "true" if data was sent successfully.
 	// false if for any reason the data could not be sent.
 	// Remember to delete msg pointers?
-	bool send(const void* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE attrType, const size_t length);
+	bool send(char* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE attrType, const size_t length);
 
 	char* recv();
 
@@ -122,13 +122,13 @@ public:
 	//bool peekExistingMessage();
 	void calcFreeMem();
 
-	HANDLE hFileMap;
-	char* mData;
-	bool exits = false;
-	unsigned int mSize = 0;
-	unsigned int freeMemSize = 0;
+	HANDLE hFileMap{};
+	char* mData					{};
+	bool exits					{false};
+	size_t mSize			{};
+	size_t freeMemSize	{};
 
-	Header header;
-	size_t* head;
-	size_t* tail;
+	Header header	{};
+	size_t* head	{};
+	size_t* tail	{};
 };

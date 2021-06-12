@@ -128,51 +128,55 @@
 
 #include "maya_includes.h"
 #include "ComLib.h"
+#include <array>
 
 MCallbackIdArray myCallbackArray;
-ComLib connectionStatus("connection", 1ULL << ((64ULL * 10ULL)-1ULL));
-ComLib comlib("sharedFileMap", 1ULL << ((64ULL * 25000000ULL) - 1ULL));
+ComLib comlib("sharedFileMap", (25ULL << 23ULL)); //200MB
+ComLib connectionStatus("connection", (200ULL << 12ULL)); //100Kb
 
-void triangulateList(MIntArray Count, MIntArray& List)
-{
-	MIntArray newList;
-	int faceLeftOvers = 0;
-
-	for (UINT i = 0; i < Count.length(); ++i)
-	{
-		size_t facePointCount = Count[i];
-		faceLeftOvers = Count[i] % 4;
-
-		if (facePointCount < 3)
-		{
-			// Come up with error plan
-		}
-		else 
-		{
-			for (UINT j = 1; j <= facePointCount / 4; ++j)
-			{
-				size_t index = j * 4;
-				newList.append(List[index - 4]);
-				newList.append(List[index - 3]);
-				newList.append(List[index - 2]);
-
-				newList.append(List[index - 2]);
-				newList.append(List[index - 3]);
-				newList.append(List[index - 1]);
-			}
-
-			if (faceLeftOvers > 0)
-			{
-				newList.append(List[Count[i] - 3]);
-				newList.append(List[Count[i] - 2]);
-				newList.append(List[Count[i] - 1]);
-			}
-
-			List.clear();
-			List = newList;
-		}
-	}
-}
+//###### OLD! ######
+//void triangulateList(MIntArray Count, MIntArray& List)
+//{
+//	MIntArray newList;
+//	int faceLeftOvers = 0;
+//
+//	for (UINT i = 0; i < Count.length(); ++i)
+//	{
+//		size_t facePointCount = Count[i];
+//		faceLeftOvers = Count[i] % 4;
+//
+//		if (facePointCount < 3)
+//		{
+//			// Come up with error plan
+//		}
+//		else 
+//		{
+//			for (UINT j = 1; j <= facePointCount / 4; ++j)
+//			{
+//				UINT index = j * 4;
+//				newList.append(List[index - 4]);
+//				newList.append(List[index - 3]);
+//				newList.append(List[index - 2]);
+//
+//				newList.append(List[index - 2]);
+//				newList.append(List[index - 3]);
+//				newList.append(List[index - 1]);
+//			}
+//
+//			if (faceLeftOvers > 0)
+//			{
+//				newList.append(List[Count[i] - 3]);
+//				newList.append(List[Count[i] - 2]);
+//				newList.append(List[Count[i] - 1]);
+//			}
+//
+//			List.clear();
+//			List = newList;
+//		}
+//	}
+//}
+//##################
+ 
 
 //General Micro Data
 void pSendActiveCamera(MFnDagNode& camDAG)
@@ -191,38 +195,48 @@ void pSendActiveCamera(MFnDagNode& camDAG)
 }
 void pSendPlugData(MPlug& plug, MString ownerUuid, ComLib::ATTRIBUTE_TYPE attribute)
 {
-	MStatus res;
-	MString debugString;
+	MStatus res {};
+	MString debugString {};
 	
 	// Generic Plug collecter. Separate types so that missmatch between data types does not happen.
 	if (plug.asMObject().apiType() == MFn::Type::kData3Float)
 	{
-		MDataHandle dh;
+		MDataHandle dh{};
 		plug.getValue(dh);
-		MFloatVector fv = dh.asFloat3();
-		float container[3] = { fv.x, fv.y, fv.z };
+		MFloatVector fv{ dh.asFloat3() };
+		float container[3] { fv.x, fv.y, fv.z };
 
-		std::string uuid = ownerUuid.asChar();
-		size_t uuidSize = uuid.size();
-		char* msg {new char()};
-		size_t messageSize = 0;
+		std::string uuid{ ownerUuid.asChar() };
+		size_t uuidSize{ uuid.size() };
+		std::vector<char> msg {};
+		size_t messageSize {};
 		
-		memcpy(msg, &uuidSize, STSIZE);
+		msg.resize(
+			msg.capacity() +
+			STSIZE +
+			uuidSize + 
+			sizeof(container)
+		);
+		memcpy(msg.data(), &uuidSize, STSIZE);
 		messageSize += STSIZE;
-		memcpy(msg + messageSize, &uuid[0], uuidSize);
+		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 		messageSize += uuidSize;
-		memcpy(msg + messageSize, &container, sizeof(container));
+		memcpy(msg.data() + messageSize, &container, sizeof(container));
 		messageSize += sizeof(container);
 
-		comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, attribute, messageSize);
-		delete msg;
+		comlib.send(
+			msg.data(), 
+			ComLib::MSG_TYPE::UPDATEVALUES, 
+			attribute, 
+			messageSize
+		);
 	}
 	else if (plug.asMObject().apiType() == MFn::Type::kMatrixData)
 	{
-		MDataHandle dh;
+		MDataHandle dh{};
 		plug.getValue(dh);
-		MMatrix mat = dh.asMatrix();
-		double matrix[4][4] = {
+		MMatrix mat{ dh.asMatrix() };
+		double matrix[4][4] {
 			mat.matrix[0][0],
 			mat.matrix[1][0],
 			mat.matrix[2][0],
@@ -243,19 +257,39 @@ void pSendPlugData(MPlug& plug, MString ownerUuid, ComLib::ATTRIBUTE_TYPE attrib
 			mat.matrix[2][3],
 			mat.matrix[3][3]
 		};
-		size_t matrixSize = sizeof(matrix);
 
-		//memcpy(msg + messageSize, &matrix, matrixSize);
-		//messageSize += matrixSize;
+		size_t matrixSize{ sizeof(matrix) };
+		std::string uuid{ ownerUuid.asChar() };
+		size_t uuidSize{ uuid.size() };
+		std::vector<char> msg{};
+		size_t messageSize {};
 
-		//comlib.send(&msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::MATRIX, messageSize);
+		msg.resize(
+			msg.capacity() +
+			STSIZE + 
+			uuidSize +
+			matrixSize
+		);
+		memcpy(msg.data(), &uuidSize, STSIZE);
+		messageSize += STSIZE;
+		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+		messageSize += uuidSize;
+		memcpy(msg.data() + messageSize, &matrix, matrixSize);
+		messageSize += matrixSize;
+
+		comlib.send(
+			msg.data(),
+			ComLib::MSG_TYPE::UPDATEVALUES, 
+			ComLib::ATTRIBUTE_TYPE::MATRIX, 
+			messageSize
+		);
 	}
 }
 void pSendPlugConnections(MPlug& plug, MString ownerName, MString ownerUuid, std::string messageType)
 {
 	MPlugArray connectedPlugs;
 	plug.connectedTo(connectedPlugs, true, false);
-	for (size_t i = 0; connectedPlugs.length(); ++i)
+	for (UINT i = 0; connectedPlugs.length(); ++i)
 	{
 		MFnDagNode connectedNode(connectedPlugs[i].node());
 		//MGlobal::displayInfo(connectedNode.name());
@@ -263,6 +297,47 @@ void pSendPlugConnections(MPlug& plug, MString ownerName, MString ownerUuid, std
 }
 
 //Transform Micro Data
+void pPrintMatrix(double mat[4][4])
+{
+	MString debugString {};
+	debugString = mat[0][0];
+	debugString += " ";
+	debugString += mat[1][0];
+	debugString += " ";
+	debugString += mat[2][0];
+	debugString += " ";
+	debugString += mat[3][0];
+	debugString += "\n";
+	
+	debugString += mat[0][1];
+	debugString += " ";
+	debugString += mat[1][1];
+	debugString += " ";
+	debugString += mat[2][1];
+	debugString += " ";
+	debugString += mat[3][1];
+	debugString += "\n";
+	
+	debugString += mat[0][2];
+	debugString += " ";
+	debugString += mat[1][2];
+	debugString += " ";
+	debugString += mat[2][2];
+	debugString += " ";
+	debugString += mat[3][2];
+	debugString += "\n";
+	
+	debugString += mat[0][3];
+	debugString += " ";
+	debugString += mat[1][3];
+	debugString += " ";
+	debugString += mat[2][3];
+	debugString += " ";
+	debugString += mat[3][3];
+	debugString += "\n";
+	
+	MGlobal::displayInfo(debugString);
+}
 void pSendMatrixData(MObject& object)
 {
 	MString debugString;
@@ -270,13 +345,6 @@ void pSendMatrixData(MObject& object)
 	MFnTransform transform(object);
 	std::string uuid = transform.uuid().asString().asChar();
 	size_t uuidSize = uuid.size();
-	//ComPtr<char> msg {};
-	//size_t messageSize = 0;
-
-	//memcpy(msg, &uuidSize, STSIZE);
-	//messageSize += STSIZE;
-	//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//messageSize += uuidSize;
 
 	MMatrix mat(transform.transformationMatrix());
 	double matrix[4][4] = {
@@ -302,63 +370,41 @@ void pSendMatrixData(MObject& object)
 	};
 	size_t matrixSize = sizeof(matrix);
 
-	debugString = mat.matrix[0][0];
-	debugString += " ";
-	debugString += mat.matrix[1][0];
-	debugString += " ";
-	debugString += mat.matrix[2][0];
-	debugString += " ";
-	debugString += mat.matrix[3][0];
-	debugString += "\n";
+	//pPrintMatrix(matrix);
 
-	debugString += mat.matrix[0][1];
-	debugString += " ";
-	debugString += mat.matrix[1][1];
-	debugString += " ";
-	debugString += mat.matrix[2][1];
-	debugString += " ";
-	debugString += mat.matrix[3][1];
-	debugString += "\n";
-
-	debugString += mat.matrix[0][2];
-	debugString += " ";
-	debugString += mat.matrix[1][2];
-	debugString += " ";
-	debugString += mat.matrix[2][2];
-	debugString += " ";
-	debugString += mat.matrix[3][2];
-	debugString += "\n";
-
-	debugString += mat.matrix[0][3];
-	debugString += " ";
-	debugString += mat.matrix[1][3];
-	debugString += " ";
-	debugString += mat.matrix[2][3];
-	debugString += " ";
-	debugString += mat.matrix[3][3];
-	debugString += "\n";
-
-	//MGlobal::displayInfo(debugString);
-
-	//memcpy(msg + messageSize, &matrix, matrixSize);
-	//messageSize += matrixSize;
-
-	//comlib.send(&msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::MATRIX, messageSize);
+	std::vector<char> msg {};
+	size_t messageSize{ 0 };
+	
+	msg.resize(
+		STSIZE + 
+		uuidSize +
+		matrixSize
+	);
+	memcpy(msg.data(), &uuidSize, STSIZE);
+	messageSize += STSIZE;
+	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+	messageSize += uuidSize;
+	memcpy(msg.data() + messageSize, &matrix, matrixSize);
+	messageSize += matrixSize;
+	
+	comlib.send(
+		msg.data(), 
+		ComLib::MSG_TYPE::UPDATEVALUES, 
+		ComLib::ATTRIBUTE_TYPE::MATRIX, 
+		messageSize);
 }
 
 //Camera Micro Data
 void pSendProjectionMatrix(MObject& object)
 {
-	MStatus res;
-	MString debugString;
-	MFnCamera cam(object);
-	std::string uuid = cam.uuid().asString().asChar();
-	size_t uuidSize = uuid.size();
-	//ComPtr<char> msg {};
-	size_t messageSize = 0;
+	MStatus res {};
+	MString debugString {};
+	MFnCamera cam {object};
+	std::string uuid {cam.uuid().asString().asChar()};
+	size_t uuidSize {uuid.size()};
 
-	MMatrix projectionMat = cam.projectionMatrix().matrix;
-	double projMat[4][4] = {
+	MMatrix projectionMat {cam.projectionMatrix().matrix};
+	double projMat[4][4] {
 		cam.projectionMatrix().matrix[0][0],
 		cam.projectionMatrix().matrix[1][0],
 		cam.projectionMatrix().matrix[2][0],
@@ -380,14 +426,26 @@ void pSendProjectionMatrix(MObject& object)
 		cam.projectionMatrix().matrix[3][3]
 	};
 
-	//memcpy(msg, &uuidSize, STSIZE);
-	//messageSize += STSIZE;
-	//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//messageSize += uuidSize;
-	//memcpy(msg + messageSize, &projMat, sizeof(projMat));
-	//messageSize += sizeof(projMat);
+	std::vector<char> msg {};
+	size_t messageSize {};
+	msg.resize(
+		STSIZE +
+		uuidSize +
+		sizeof(projMat)
+	);
+	memcpy(msg.data(), &uuidSize, STSIZE);
+	messageSize += STSIZE;
+	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+	messageSize += uuidSize;
+	memcpy(msg.data() + messageSize, &projMat, sizeof(projMat));
+	messageSize += sizeof(projMat);
 
-	//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::PROJMATRIX, messageSize);
+	comlib.send(
+		msg.data(), 
+		ComLib::MSG_TYPE::UPDATEVALUES, 
+		ComLib::ATTRIBUTE_TYPE::PROJMATRIX, 
+		messageSize
+	);
 }
 void pSendCamData(MObject& object)
 {
@@ -405,516 +463,737 @@ void pSendCamData(MObject& object)
 }
 
 //Mesh Micro Data
+//void pSendVertexData2(MObject& object)
+//{
+//	MStatus res;
+//	MString debugString;
+//	char* msg {new char()};
+//	size_t messageSize = 0;
+//	double container3[10000][3];
+//	size_t container3Size = sizeof(container3);
+//	int counter = -1;
+//
+//	MFnMesh mesh(object);
+//	std::string uuid = mesh.uuid().asString().asChar();
+//	size_t uuidSize = uuid.size();
+//	memcpy(msg, &uuidSize, STSIZE);
+//	messageSize += STSIZE;
+//	memcpy(msg + messageSize, &uuid[0], uuidSize);
+//	messageSize += uuidSize;
+//
+//	MFloatPointArray vertexList;
+//	MIntArray triangleCount;
+//	MIntArray triangleList;
+//	mesh.getPoints(vertexList, MSpace::kObject);
+//	mesh.getTriangles(triangleCount, triangleList);
+//
+//	MGlobal::displayInfo("####################### ENTERED!!!! #####################");
+//
+//	if (vertexList.length() <= 0)
+//	{
+//		return;
+//	}
+//
+//	////Allocate new vertex list in dx11/12 if count has changed
+//	size_t vertexCount = vertexList.length();
+//	memcpy(msg + messageSize, &vertexCount, STSIZE);
+//	messageSize = STSIZE;
+//	comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
+//	delete msg;
+//	msg = new char();
+//	messageSize = 0;
+//
+//	for (size_t i = 0; i < vertexCount; ++i)
+//	{
+//		++counter;
+//		container3[counter][0] = vertexList[i].x;
+//		container3[counter][1] = vertexList[i].y;
+//		container3[counter][2] = vertexList[i].z;
+//
+//		if (counter % 9999 == 0 && counter != 0)
+//		{
+//			memcpy(msg + messageSize, &uuidSize, STSIZE);
+//			messageSize += STSIZE;
+//			memcpy(msg + messageSize, &uuid[0], uuidSize);
+//			messageSize += uuidSize;
+//			
+//			// Position at i - counter when recieving data.
+//			memcpy(msg + messageSize, &i, STSIZE);
+//			messageSize += STSIZE;
+//			memcpy(msg + messageSize, &counter, sizeof(counter));
+//			messageSize += sizeof(counter);
+//			memcpy(msg + messageSize, container3, container3Size);
+//			messageSize += container3Size;
+//			
+//			comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
+//			delete msg; msg = new char();
+//			messageSize = 0;
+//			counter = -1;
+//		}
+//	}
+//	if (counter >= 0)
+//	{
+//		memcpy(msg + messageSize, &uuidSize, STSIZE);
+//		messageSize += STSIZE;
+//		memcpy(msg + messageSize, &uuid[0], uuidSize);
+//		messageSize += uuidSize;
+//		
+//		// Position at vertexCount - counter when receiving data
+//		memcpy(msg + messageSize, &vertexCount, STSIZE);
+//		messageSize += STSIZE;
+//		memcpy(msg + messageSize, &counter, sizeof(counter));
+//		messageSize += sizeof(counter);
+//		memcpy(msg + messageSize, container3, container3Size);
+//		messageSize += container3Size;
+//		
+//		comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
+//		delete msg; msg = new char();
+//		messageSize = 0;
+//		counter = -1;
+//	}
+//
+//	MGlobal::displayInfo("vertex done!");
+//
+//	MFloatVectorArray normals;
+//	MIntArray normalCount;
+//	MIntArray normalList;
+//	size_t normalsCount = normals.length();
+//	mesh.getNormals(normals, MSpace::kObject);
+//	mesh.getNormalIds(normalCount, normalList);
+//
+//	memcpy(msg, &uuidSize, STSIZE);
+//	messageSize += STSIZE;
+//	memcpy(msg + messageSize, &uuid[0], uuidSize);
+//	messageSize += uuidSize;
+//	memcpy(msg + messageSize, &normalsCount, STSIZE);
+//	messageSize += STSIZE;
+//
+//	comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
+//	delete msg; msg = new char();
+//	messageSize = 0;
+//
+//	for (size_t i = 0; i < normalsCount; ++i)
+//	{
+//		counter++;
+//		container3[counter][0] = normals[i].x;
+//		container3[counter][1] = normals[i].y;
+//		container3[counter][2] = normals[i].z;
+//
+//		if (counter % 9999 == 0 && counter != 0)
+//		{
+//			memcpy(msg, &uuidSize, STSIZE);
+//			messageSize += STSIZE;
+//			memcpy(msg + messageSize, &uuid[0], uuidSize);
+//			messageSize += uuidSize;
+//			
+//			// Position at i - counter when recieving data.
+//			memcpy(msg + messageSize, &i, STSIZE);
+//			messageSize += STSIZE;
+//			memcpy(msg + messageSize, &counter, sizeof(counter));
+//			messageSize += sizeof(counter);
+//			memcpy(msg + messageSize, container3, container3Size);
+//			messageSize += container3Size;
+//			
+//			comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
+//			delete msg; msg = new char();
+//			messageSize = 0;
+//			counter = -1;
+//		}
+//	}
+//	if (counter >= 0)
+//	{
+//		memcpy(msg, &uuidSize, STSIZE);
+//		messageSize += STSIZE;
+//		memcpy(msg + messageSize, &uuid[0], uuidSize);
+//		messageSize += uuidSize;
+//		
+//		// Position at vertexCount - counter when receiving data
+//		memcpy(msg + messageSize, &normalsCount, STSIZE);
+//		messageSize += STSIZE;
+//		memcpy(msg + messageSize, &counter, sizeof(counter));
+//		messageSize += sizeof(counter);
+//		memcpy(msg + messageSize, container3, container3Size);
+//		messageSize += container3Size;
+//		
+//		comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
+//		delete msg; msg = new char();
+//		messageSize = 0;
+//		counter = -1;
+//	}
+//
+//	MGlobal::displayInfo("normal done!");
+//
+//	MFloatArray Us;
+//	MFloatArray Vs;
+//	size_t container[10000];
+//	double container2[10000][2];
+//	size_t uvListSize = sizeof(container2);
+//	size_t uvCount = 0;
+//	MString uvSetName;
+//	MStringArray uvSets;
+//	mesh.getUVSetNames(uvSets);
+//
+//	if (!(uvSets.length() <= 0 || mesh.numUVs(uvSets[0]) <= 0))
+//	{
+//		memcpy(msg, &uuidSize, STSIZE);
+//		messageSize += STSIZE;
+//		memcpy(msg + messageSize, &uuid[0], uuidSize);
+//		messageSize += uuidSize;
+//		
+//		size_t uvSetsCount = uvSets.length();
+//		memcpy(msg + messageSize, &uvSetsCount, STSIZE);
+//		messageSize += STSIZE;
+//
+//		comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVSETS, messageSize);
+//		delete msg; msg = new char();
+//		messageSize = 0;
+//
+//		for (size_t i = 0; i < uvSetsCount; ++i)
+//		{
+//			memcpy(msg, &uuidSize, STSIZE);
+//			messageSize += STSIZE;
+//			memcpy(msg + messageSize, &uuid[0], uuidSize);
+//			messageSize += uuidSize;
+//
+//			mesh.getUVs(Us, Vs, &uvSets[i]);
+//			uvCount = Us.length();
+//			memcpy(msg + messageSize, &uvCount, STSIZE);
+//			messageSize += STSIZE;
+//
+//			memcpy(msg + messageSize, &i, STSIZE);
+//			messageSize += STSIZE;
+//
+//			std::string uvSetName = uvSets[i].asChar();
+//			size_t setNameLength = uvSetName.size();			
+//			memcpy(msg + messageSize, &setNameLength, STSIZE);
+//			messageSize += STSIZE;
+//			memcpy(msg + messageSize, &uvSetName[0], setNameLength);
+//			messageSize += setNameLength;
+//			
+//
+//			comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVSET, messageSize);
+//			delete msg; msg = new char();
+//			messageSize = 0;
+//
+//			for (size_t j = 0; j < uvCount; ++j)
+//			{
+//				counter++;
+//				container2[counter][0] = Us[j];
+//				container2[counter][1] = Vs[j];
+//
+//				if (counter % 9999 == 0 && counter != 0)
+//				{
+//					memcpy(msg, &uuidSize, STSIZE);
+//					messageSize += STSIZE;
+//					memcpy(msg + messageSize, &uuid[0], uuidSize);
+//					messageSize += uuidSize;
+//					
+//					// Position at vertexCount - counter when receiving data
+//					memcpy(msg + messageSize, &j, STSIZE);
+//					messageSize += STSIZE;
+//					memcpy(msg + messageSize, &counter, sizeof(counter));
+//					messageSize += sizeof(counter);
+//					memcpy(msg + messageSize, container2, sizeof(container2));
+//					messageSize += sizeof(container2);
+//						
+//					memcpy(msg + messageSize, &i, STSIZE);
+//					messageSize += STSIZE;
+//					
+//					comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UV, messageSize);
+//					delete msg; msg = new char();
+//					messageSize = 0;
+//					counter = -1;
+//				}
+//			}
+//			if (counter >= 0)
+//			{
+//				memcpy(msg, &uuidSize, STSIZE);
+//				messageSize += STSIZE;
+//				memcpy(msg + messageSize, &uuid[0], uuidSize);
+//				messageSize += uuidSize;
+//
+//				// Position at vertexCount - counter when receiving data
+//				memcpy(msg + messageSize, &uvCount, STSIZE);
+//				messageSize += STSIZE;
+//				memcpy(msg + messageSize, &counter, sizeof(counter));
+//				messageSize += sizeof(counter);
+//				memcpy(msg + messageSize, container2, sizeof(container2));
+//				messageSize += sizeof(container2);
+//
+//				memcpy(msg + messageSize, &i, STSIZE);
+//				messageSize += STSIZE;
+//
+//				comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UV, messageSize);
+//				delete msg; msg = new char();
+//				messageSize = 0;
+//				counter = -1;
+//			}
+//
+//			MItMeshPolygon faceIter(mesh.object());
+//			MIntArray uvIDs;
+//			
+//			for (; !faceIter.isDone(); faceIter.next())
+//			{
+//				size_t faceVertexCount = faceIter.polygonVertexCount();
+//				size_t leftOvers = faceVertexCount % 4;
+//				MIntArray FaceUVIDs;
+//				
+//				for (int j = 0; j < faceVertexCount; ++j)
+//				{
+//					int uvID;
+//					faceIter.getUVIndex(j, uvID, &uvSets[i]);
+//					FaceUVIDs.append(uvID);
+//				}
+//
+//				if (faceVertexCount < 3) 
+//				{
+//					// Come up with error plan
+//				}
+//				else
+//				{
+//					for (size_t j = 1; j <= faceVertexCount / 4; ++j)
+//					{
+//						size_t index = j * 4;
+//						uvIDs.append(FaceUVIDs[index - 4]);
+//						uvIDs.append(FaceUVIDs[index - 3]);
+//						uvIDs.append(FaceUVIDs[index - 2]);
+//
+//						uvIDs.append(FaceUVIDs[index - 2]);
+//						uvIDs.append(FaceUVIDs[index - 3]);
+//						uvIDs.append(FaceUVIDs[index - 1]);
+//					}
+//
+//					if (leftOvers > 0)
+//					{
+//						uvIDs.append(FaceUVIDs[faceVertexCount - 3]);
+//						uvIDs.append(FaceUVIDs[faceVertexCount - 2]);
+//						uvIDs.append(FaceUVIDs[faceVertexCount - 1]);
+//					}
+//				}
+//
+//
+//
+//				
+//			}
+//
+//			size_t uvIDCount = uvIDs.length();
+//			memcpy(msg, &uuidSize, STSIZE);
+//			messageSize += STSIZE;
+//			memcpy(msg + messageSize, &uuid[0], uuidSize);
+//			messageSize += uuidSize;
+//	
+//			memcpy(msg + messageSize, &uvIDCount, STSIZE);
+//			messageSize += STSIZE;
+//
+//			memcpy(msg + messageSize, &i, STSIZE);
+//			messageSize += STSIZE;
+//			
+//			comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
+//			delete msg; msg = new char();
+//			messageSize = 0;
+//
+//			for (size_t j = 0; j < uvIDCount; ++j)
+//			{
+//				counter++;
+//				container[counter] = uvIDs[j];
+//
+//				if (counter % 9999 == 0 && counter != 0)
+//				{
+//	//				//memcpy(msg, &uuidSize, STSIZE);
+//	//				//messageSize += STSIZE;
+//	//				//memcpy(msg + messageSize, &uuid[0], uuidSize);
+//	//				//messageSize += uuidSize;
+//	
+//	//				//memcpy(msg + messageSize, &setNameLength, STSIZE);
+//	//				//messageSize += STSIZE;
+//	//				//memcpy(msg + messageSize, &uvSetName[0], setNameLength);
+//	//				//messageSize += setNameLength;
+//
+//	//				// Position at vertexCount - counter when receiving data
+//	//				//memcpy(msg + messageSize, &j, STSIZE);
+//	//				//messageSize += STSIZE;
+//	//				//memcpy(msg + messageSize, &counter, sizeof(counter));
+//	//				//messageSize += sizeof(counter);
+//	//				//memcpy(msg + messageSize, container, sizeof(container));
+//	//				//messageSize += sizeof(container);
+//
+//	//				//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
+//	//				//msg.Reset();
+//	//				//messageSize = 0;
+//					counter = -1;
+//				}
+//			}
+//			if (counter >= 0)
+//			{
+//	//			//memcpy(msg, &uuidSize, STSIZE);
+//	//			//messageSize += STSIZE;
+//	//			//memcpy(msg + messageSize, &uuid[0], uuidSize);
+//	//			//messageSize += uuidSize;
+//	
+//	//			//memcpy(msg + messageSize, &setNameLength, STSIZE);
+//	//			//messageSize += STSIZE;
+//	//			//memcpy(msg + messageSize, &uvSetName[0], setNameLength);
+//	//			//messageSize += setNameLength;
+//
+//	//			// Position at vertexCount - counter when receiving data
+//	//			//memcpy(msg + messageSize, &uvIDCount, STSIZE);
+//	//			//messageSize += STSIZE;
+//	//			//memcpy(msg + messageSize, &counter, sizeof(counter));
+//	//			//messageSize += sizeof(counter);
+//	//			//memcpy(msg + messageSize, container, sizeof(container));
+//	//			//messageSize += sizeof(container);
+//
+//	//			//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
+//	//			//msg.Reset();
+//	//			//messageSize = 0;
+//				counter = -1;
+//			}
+//		}
+//	}
+//
+//	MGlobal::displayInfo("uv done!");
+//
+//	if (triangleCount.length() != (triangleList.length() / 3))
+//	{
+//		triangulateList(normalCount, normalList);
+//	}
+//
+//	MGlobal::displayInfo("triangulate done!");
+//
+//	size_t triangleListCount = triangleList.length();
+//	size_t normalListCount = normalList.length();
+//
+//	////memcpy(msg, &uuidSize, STSIZE);
+//	////messageSize += STSIZE;
+//	////memcpy(msg + messageSize, &uuid[0], uuidSize);
+//	////messageSize += uuidSize;
+//	////memcpy(msg + messageSize, &triangleListCount, STSIZE);
+//	////messageSize += STSIZE;
+//
+//	////comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
+//	////msg.Reset();
+//	////messageSize = 0;
+//
+//	////memcpy(msg, &uuidSize, STSIZE);
+//	////messageSize += STSIZE;
+//	////memcpy(msg + messageSize, &uuid[0], uuidSize);
+//	////messageSize += uuidSize;
+//	////memcpy(msg + messageSize, &normalListCount, STSIZE);
+//	////messageSize += STSIZE;
+//
+//	////comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE , ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
+//	////msg.Reset();
+//	////messageSize = 0;
+//
+//	for (size_t i = 0; i < triangleList.length(); ++i)
+//	{
+//		counter++;
+//		container[counter] = triangleList[i];
+//
+//		if (counter % 9999 == 0 && counter != 0)
+//		{
+//			//memcpy(msg, &uuidSize, STSIZE);
+//			//messageSize += STSIZE;
+//			//memcpy(msg + messageSize, &uuid[0], uuidSize);
+//			//messageSize += uuidSize;
+//
+//			//memcpy(msg + messageSize, &i, STSIZE);
+//			//messageSize += STSIZE;
+//			//memcpy(msg + messageSize, &counter, sizeof(counter));
+//			//messageSize += sizeof(counter);
+//			//memcpy(msg + messageSize, container, sizeof(container));
+//			//messageSize += sizeof(container);
+//
+//			//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
+//			//msg.Reset();
+//			//messageSize = 0;
+//			counter = -1;
+//		}
+//	}
+//	if (counter >= 0)
+//	{
+//		//memcpy(msg, &uuidSize, STSIZE);
+//		//messageSize += STSIZE;
+//		//memcpy(msg + messageSize, &uuid[0], uuidSize);
+//		//messageSize += uuidSize;
+//
+//		//memcpy(msg + messageSize, &triangleListCount, STSIZE);
+//		//messageSize += STSIZE;
+//		//memcpy(msg + messageSize, &counter, sizeof(counter));
+//		//messageSize += sizeof(counter);
+//		//memcpy(msg + messageSize, container, sizeof(container));
+//		//messageSize += sizeof(container);
+//
+//		//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
+//		//msg.Reset();
+//		//messageSize = 0;
+//		counter = -1;
+//	}
+//
+//	for (size_t i = 0; i < normalList.length(); ++i)
+//	{
+//		counter++;
+//		container[counter] = normalList[i];
+//
+//		if (counter % 9999 == 0 && counter != 0)
+//		{
+//			//memcpy(msg, &uuidSize, STSIZE);
+//			//messageSize += STSIZE;
+//			//memcpy(msg + messageSize, &uuid[0], uuidSize);
+//			//messageSize += uuidSize;
+//
+//			//memcpy(msg + messageSize, &i, STSIZE);
+//			//messageSize += STSIZE;
+//			//memcpy(msg + messageSize, &counter, sizeof(counter));
+//			//messageSize += sizeof(counter);
+//			//memcpy(msg + messageSize, container, sizeof(container));
+//			//messageSize += sizeof(container);
+//
+//			//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
+//			//msg.Reset();
+//			//messageSize = 0;
+//			counter = -1;
+//		}
+//	}
+//	if (counter >= 0)
+//	{
+//		//memcpy(msg, &uuidSize, STSIZE);
+//		//messageSize += STSIZE;
+//		//memcpy(msg + messageSize, &uuid[0], uuidSize);
+//		//messageSize += uuidSize;
+//
+//		//memcpy(msg + messageSize, &normalListCount, STSIZE);
+//		//messageSize += STSIZE;
+//		//memcpy(msg + messageSize, &counter, sizeof(counter));
+//		//messageSize += sizeof(counter);
+//		//memcpy(msg + messageSize, container, sizeof(container));
+//		//messageSize += sizeof(container);
+//
+//		//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
+//		//msg.Reset();
+//		//messageSize = 0;
+//		counter = -1;
+//	}
+//	MGlobal::displayInfo("IDs done!");
+//}
 void pSendVertexData(MObject& object)
 {
-	MStatus res;
-	MString debugString;
-	//ComPtr<char> msg {};
-	//size_t messageSize = 0;
-	double container3[10000][3];
-	size_t container3Size = sizeof(container3);
-	int counter = -1;
+	MStatus res {};
+	MString debugString {};
 
-	MFnMesh mesh(object);
-	std::string uuid = mesh.uuid().asString().asChar();
-	size_t uuidSize = uuid.size();
-	////memcpy(msg, &uuidSize, STSIZE);
-	////messageSize += STSIZE;
-	////memcpy(msg + messageSize, &uuid[0], uuidSize);
-	////messageSize += uuidSize;
-
-	MFloatPointArray vertexList;
-	MIntArray triangleCount;
-	MIntArray triangleList;
-	mesh.getPoints(vertexList, MSpace::kObject);
-	mesh.getTriangles(triangleCount, triangleList);
-
-	MGlobal::displayInfo("####################### ENTERED!!!! #####################");
-
-	if (vertexList.length() <= 0)
+	struct VERTEX
 	{
-		return;
-	}
+		double point[3]		{};
+		double normal[3]	{};
+		double uv[2]		{};
+	};
+	std::vector<VERTEX> vertexList {};
+	vertexList.resize(10000);
 
-	////Allocate new vertex list in dx11/12 if count has changed
-	size_t vertexCount = vertexList.length();
-	////memcpy(msg + messageSize, &vertexCount, STSIZE);
-	////messageSize = STSIZE;
-	////comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
-	////msg.Reset();
-	////messageSize = 0;
+	MFnMesh mesh{ object };
+	std::vector<char> msg {};
+	size_t messageSize {};
 
-	for (size_t i = 0; i < vertexCount; ++i)
+	MStringArray uvSetNames{};
+	mesh.getUVSetNames(uvSetNames);
+
+	MItMeshVertex vertexIt{ object, &res };
+	if (res == MS::kSuccess)
 	{
-		counter++;
-		container3[counter][0] = vertexList[i].x;
-		container3[counter][1] = vertexList[i].y;
-		container3[counter][2] = vertexList[i].z;
+		std::string uuid{mesh.uuid().asString().asChar()};
+		size_t uuidSize{uuid.size()};
 
-		if (counter % 9999 == 0 && counter != 0)
+		msg.resize(
+			STSIZE +
+			uuidSize + 
+			sizeof(int)
+		);
+		memcpy(msg.data(), &uuidSize, STSIZE);
+		messageSize += STSIZE;
+		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+		messageSize += uuidSize;
+
+		int vertexCount {vertexIt.count()};
+		memcpy(msg.data() + messageSize, &vertexCount, sizeof(int));
+		messageSize += sizeof(int);
+
+		comlib.send(
+			msg.data(), 
+			ComLib::MSG_TYPE::ALLOCATE, 
+			ComLib::ATTRIBUTE_TYPE::VERTEX, 
+			messageSize
+		);
+		//DONE ##############################################################################################
+		msg.clear();
+		msg.resize(
+			STSIZE +
+			uuidSize +
+			sizeof(int) * 2 +
+			vertexList.size()
+		);
+		messageSize = 0;
+		int counter {-1};
+
+		for (; !vertexIt.isDone(); vertexIt.next())
 		{
-			//memcpy(msg + messageSize, &uuidSize, STSIZE);
-			//messageSize += STSIZE;
-			//memcpy(msg + messageSize, &uuid[0], uuidSize);
-			//messageSize += uuidSize;
+			++counter;
+			int index{vertexIt.index()};
 			
-			//// Position at i - counter when recieving data.
-			//memcpy(msg + messageSize, &i, STSIZE);
-			//messageSize += STSIZE;
-			//memcpy(msg + messageSize, &counter, sizeof(counter));
-			//messageSize += sizeof(counter);
-			//memcpy(msg + messageSize, container3, container3Size);
-			//messageSize += container3Size;
+			MPoint point{vertexIt.position(MSpace::kObject)};
 			
-			////comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
-			//msg.Reset();
-			//messageSize = 0;
-			counter = -1;
-		}
-	}
-	if (counter >= 0)
-	{
-		//memcpy(msg + messageSize, &uuidSize, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &uuid[0], uuidSize);
-		//messageSize += uuidSize;
+			vertexList[counter].point[0] = point.x;
+			vertexList[counter].point[1] = point.y;
+			vertexList[counter].point[2] = point.z;
 		
-		//// Position at vertexCount - counter when receiving data
-		//memcpy(msg + messageSize, &vertexCount, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &counter, sizeof(counter));
-		//messageSize += sizeof(counter);
-		//memcpy(msg + messageSize, container3, container3Size);
-		//messageSize += container3Size;
+			MVector normal{};
+			vertexIt.getNormal(normal, MSpace::kObject);
+			vertexList[counter].normal[0] = normal.x;
+			vertexList[counter].normal[1] = normal.y;
+			vertexList[counter].normal[2] = normal.z;
 		
-		////comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
-		//msg.Reset();
-		//messageSize = 0;
-		counter = -1;
-	}
-
-	MGlobal::displayInfo("vertex done!");
-
-	MFloatVectorArray normals;
-	MIntArray normalCount;
-	MIntArray normalList;
-	size_t normalsCount = normals.length();
-	mesh.getNormals(normals, MSpace::kObject);
-	mesh.getNormalIds(normalCount, normalList);
-
-	////memcpy(msg, &uuidSize, STSIZE);
-	////messageSize += STSIZE;
-	////memcpy(msg + messageSize, &uuid[0], uuidSize);
-	////messageSize += uuidSize;
-	////memcpy(msg + messageSize, &normalsCount, STSIZE);
-	////messageSize += STSIZE;
-
-	////comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
-	////msg.Reset();
-	////messageSize = 0;
-
-	for (size_t i = 0; i < normalsCount; ++i)
-	{
-		counter++;
-		container3[counter][0] = normals[i].x;
-		container3[counter][1] = normals[i].y;
-		container3[counter][2] = normals[i].z;
-
-		if (counter % 9999 == 0 && counter != 0)
-		{
-			//memcpy(msg, &uuidSize, STSIZE);
-			//messageSize += STSIZE;
-			//memcpy(msg + messageSize, &uuid[0], uuidSize);
-			//messageSize += uuidSize;
-			
-			//// Position at i - counter when recieving data.
-			//memcpy(msg + messageSize, &i, STSIZE);
-			//messageSize += STSIZE;
-			//memcpy(msg + messageSize, &counter, sizeof(counter));
-			//messageSize += sizeof(counter);
-			//memcpy(msg + messageSize, container3, container3Size);
-			//messageSize += container3Size;
-			
-			////comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
-			//msg.Reset();
-			//messageSize = 0;
-			counter = -1;
-		}
-	}
-	if (counter >= 0)
-	{
-		//memcpy(msg, &uuidSize, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &uuid[0], uuidSize);
-		//messageSize += uuidSize;
+			float2 uv{};
+			vertexIt.getUV(uv, &uvSetNames[0]);
+			vertexList[counter].uv[0] = uv[0];
+			vertexList[counter].uv[1] = uv[1];
 		
-		//// Position at vertexCount - counter when receiving data
-		//memcpy(msg + messageSize, &normalsCount, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &counter, sizeof(counter));
-		//messageSize += sizeof(counter);
-		//memcpy(msg + messageSize, container3, container3Size);
-		//messageSize += container3Size;
-		
-		////comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
-		//msg.Reset();
-		//messageSize = 0;
-		counter = -1;
-	}
-
-	MGlobal::displayInfo("normal done!");
-
-	MFloatArray Us;
-	MFloatArray Vs;
-	size_t container[10000];
-	double container2[10000][2];
-	size_t uvListSize = sizeof(container2);
-	size_t uvCount = 0;
-	MString uvSetName;
-	MStringArray uvSets;
-	mesh.getUVSetNames(uvSets);
-
-	if (!(uvSets.length() <= 0 || mesh.numUVs(uvSets[0]) <= 0))
-	{
-	//	//memcpy(msg, &uuidSize, STSIZE);
-	//	//messageSize += STSIZE;
-	//	//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//	//messageSize += uuidSize;
-		
-		size_t uvSetsCount = uvSets.length();
-	//	//memcpy(msg + messageSize, &uvSetsCount, STSIZE);
-	//	//messageSize += STSIZE;
-
-	//	//comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVSETS, messageSize);
-	//	//msg.Reset();
-	//	//messageSize = 0;
-
-		for (size_t i = 0; i < uvSetsCount; ++i)
-		{
-	//		//memcpy(msg, &uuidSize, STSIZE);
-	//		//messageSize += STSIZE;
-	//		//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//		//messageSize += uuidSize;
-
-			std::string uvSetName = uvSets[i].asChar();
-			size_t setNameLength = uvSetName.size();
-			
-	//		//memcpy(msg + messageSize, &setNameLength, STSIZE);
-	//		//messageSize += STSIZE;
-	//		//memcpy(msg + messageSize, &uvSetName[0], setNameLength);
-	//		//messageSize += setNameLength;
-			
-			mesh.getUVs(Us, Vs, &uvSets[i]);
-			uvCount = Us.length();
-	//		//memcpy(msg + messageSize, &uvCount, STSIZE);
-	//		//messageSize += STSIZE;
-
-	//		//comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVSET, messageSize);
-	//		//msg.Reset();
-	//		//messageSize = 0;
-
-			for (size_t j = 0; j < uvCount; ++j)
+			if (counter % 9999 == 0 && counter != 0)
 			{
-				counter++;
-				container2[counter][0] = Us[j];
-				container2[counter][1] = Vs[j];
-
-				if (counter % 9999 == 0 && counter != 0)
-				{
-	//				//memcpy(msg, &uuidSize, STSIZE);
-	//				//messageSize += STSIZE;
-	//				//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//				//messageSize += uuidSize;
-						
-	//				//memcpy(msg + messageSize, &setNameLength, STSIZE);
-	//				//messageSize += STSIZE;
-	//				//memcpy(msg + messageSize, &uvSetName[0], setNameLength);
-	//				//messageSize += setNameLength;
-					
-	//				//// Position at vertexCount - counter when receiving data
-	//				//memcpy(msg + messageSize, &j, STSIZE);
-	//				//messageSize += STSIZE;
-	//				//memcpy(msg + messageSize, &counter, sizeof(counter));
-	//				//messageSize += sizeof(counter);
-	//				//memcpy(msg + messageSize, container2, sizeof(container2));
-	//				//messageSize += sizeof(container2);
-					
-	//				////comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UV, messageSize);
-	//				//msg.Reset();
-	//				//messageSize = 0;
-					counter = -1;
-				}
-			}
-			if (counter >= 0)
-			{
-	//			//memcpy(msg, &uuidSize, STSIZE);
-	//			//messageSize += STSIZE;
-	//			//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//			//messageSize += uuidSize;
-	
-	//			//memcpy(msg + messageSize, &setNameLength, STSIZE);
-	//			//messageSize += STSIZE;
-	//			//memcpy(msg + messageSize, &uvSetName[0], setNameLength);
-	//			//messageSize += setNameLength;
-
-	//			// Position at vertexCount - counter when receiving data
-	//			//memcpy(msg + messageSize, &uvCount, STSIZE);
-	//			//messageSize += STSIZE;
-	//			//memcpy(msg + messageSize, &counter, sizeof(counter));
-	//			//messageSize += sizeof(counter);
-	//			//memcpy(msg + messageSize, container2, sizeof(container2));
-	//			//messageSize += sizeof(container2);
-
-	//			//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UV, messageSize);
-	//			//msg.Reset();
-	//			//messageSize = 0;
-				counter = -1;
-			}
-
-			MItMeshPolygon faceIter(mesh.object());
-			MIntArray uvIDs;
-			
-			for (; !faceIter.isDone(); faceIter.next())
-			{
-				size_t faceVertexCount = faceIter.polygonVertexCount();
-				size_t leftOvers = faceVertexCount % 4;
-				MIntArray FaceUVIDs;
+				memcpy(msg.data(), &uuidSize, STSIZE);
+				messageSize += STSIZE;
+				memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+				messageSize += uuidSize;
 				
-				for (int j = 0; j < faceVertexCount; ++j)
-				{
-					int uvID;
-					faceIter.getUVIndex(j, uvID, &uvSets[i]);
-					FaceUVIDs.append(uvID);
-				}
+				memcpy(msg.data() + messageSize, &index, sizeof(int));
+				messageSize += sizeof(int);
+				memcpy(msg.data() + messageSize, &counter, sizeof(int));
+				messageSize += sizeof(counter);
+				memcpy(msg.data() + messageSize, &vertexList[0], vertexList.size());
+				messageSize += vertexList.size();
 
-				if (faceVertexCount < 3) 
-				{
-					// Come up with error plan
-				}
-				else
-				{
-					for (size_t j = 1; j <= faceVertexCount / 4; ++j)
-					{
-						size_t index = j * 4;
-						uvIDs.append(FaceUVIDs[index - 4]);
-						uvIDs.append(FaceUVIDs[index - 3]);
-						uvIDs.append(FaceUVIDs[index - 2]);
-
-						uvIDs.append(FaceUVIDs[index - 2]);
-						uvIDs.append(FaceUVIDs[index - 3]);
-						uvIDs.append(FaceUVIDs[index - 1]);
-					}
-
-					if (leftOvers > 0)
-					{
-						uvIDs.append(FaceUVIDs[faceVertexCount - 3]);
-						uvIDs.append(FaceUVIDs[faceVertexCount - 2]);
-						uvIDs.append(FaceUVIDs[faceVertexCount - 1]);
-					}
-				}
-			}
-
-			size_t uvIDCount = uvIDs.length();
-	//		//memcpy(msg, &uuidSize, STSIZE);
-	//		//messageSize += STSIZE;
-	//		//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//		//messageSize += uuidSize;
-	
-	//		//memcpy(msg + messageSize, &setNameLength, STSIZE);
-	//		//messageSize += STSIZE;
-	//		//memcpy(msg + messageSize, &uvSetName[0], setNameLength);
-	//		//messageSize += setNameLength;
-	
-	//		//memcpy(msg + messageSize, &uvIDCount, STSIZE);
-	//		//messageSize += STSIZE;
-	//		
-	//		//comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
-	//		//msg.Reset();
-	//		//messageSize = 0;
-
-			for (size_t j = 0; j < uvIDCount; ++j)
-			{
-				counter++;
-				container[counter] = uvIDs[j];
-
-				if (counter % 9999 == 0 && counter != 0)
-				{
-	//				//memcpy(msg, &uuidSize, STSIZE);
-	//				//messageSize += STSIZE;
-	//				//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//				//messageSize += uuidSize;
-	
-	//				//memcpy(msg + messageSize, &setNameLength, STSIZE);
-	//				//messageSize += STSIZE;
-	//				//memcpy(msg + messageSize, &uvSetName[0], setNameLength);
-	//				//messageSize += setNameLength;
-
-	//				// Position at vertexCount - counter when receiving data
-	//				//memcpy(msg + messageSize, &j, STSIZE);
-	//				//messageSize += STSIZE;
-	//				//memcpy(msg + messageSize, &counter, sizeof(counter));
-	//				//messageSize += sizeof(counter);
-	//				//memcpy(msg + messageSize, container, sizeof(container));
-	//				//messageSize += sizeof(container);
-
-	//				//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
-	//				//msg.Reset();
-	//				//messageSize = 0;
-					counter = -1;
-				}
-			}
-			if (counter >= 0)
-			{
-	//			//memcpy(msg, &uuidSize, STSIZE);
-	//			//messageSize += STSIZE;
-	//			//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//			//messageSize += uuidSize;
-	
-	//			//memcpy(msg + messageSize, &setNameLength, STSIZE);
-	//			//messageSize += STSIZE;
-	//			//memcpy(msg + messageSize, &uvSetName[0], setNameLength);
-	//			//messageSize += setNameLength;
-
-	//			// Position at vertexCount - counter when receiving data
-	//			//memcpy(msg + messageSize, &uvIDCount, STSIZE);
-	//			//messageSize += STSIZE;
-	//			//memcpy(msg + messageSize, &counter, sizeof(counter));
-	//			//messageSize += sizeof(counter);
-	//			//memcpy(msg + messageSize, container, sizeof(container));
-	//			//messageSize += sizeof(container);
-
-	//			//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
-	//			//msg.Reset();
-	//			//messageSize = 0;
+				comlib.send(
+					msg.data(), 
+					ComLib::MSG_TYPE::UPDATEVALUES, 
+					ComLib::ATTRIBUTE_TYPE::VERTEX, 
+					messageSize
+				);
+				messageSize = 0;
 				counter = -1;
 			}
 		}
-	}
-
-	MGlobal::displayInfo("uv done!");
-
-	if (triangleCount.length() != (triangleList.length() / 3))
-	{
-		triangulateList(normalCount, normalList);
-	}
-
-	MGlobal::displayInfo("triangulate done!");
-
-	size_t triangleListCount = triangleList.length();
-	size_t normalListCount = normalList.length();
-
-	////memcpy(msg, &uuidSize, STSIZE);
-	////messageSize += STSIZE;
-	////memcpy(msg + messageSize, &uuid[0], uuidSize);
-	////messageSize += uuidSize;
-	////memcpy(msg + messageSize, &triangleListCount, STSIZE);
-	////messageSize += STSIZE;
-
-	////comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
-	////msg.Reset();
-	////messageSize = 0;
-
-	////memcpy(msg, &uuidSize, STSIZE);
-	////messageSize += STSIZE;
-	////memcpy(msg + messageSize, &uuid[0], uuidSize);
-	////messageSize += uuidSize;
-	////memcpy(msg + messageSize, &normalListCount, STSIZE);
-	////messageSize += STSIZE;
-
-	////comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE , ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
-	////msg.Reset();
-	////messageSize = 0;
-
-	for (size_t i = 0; i < triangleList.length(); ++i)
-	{
-		counter++;
-		container[counter] = triangleList[i];
-
-		if (counter % 9999 == 0 && counter != 0)
+		if (counter >= 0)
 		{
-			//memcpy(msg, &uuidSize, STSIZE);
-			//messageSize += STSIZE;
-			//memcpy(msg + messageSize, &uuid[0], uuidSize);
-			//messageSize += uuidSize;
+			memcpy(msg.data(), &uuidSize, STSIZE);
+			messageSize += STSIZE;
+			memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+			messageSize += uuidSize;
 
-			//memcpy(msg + messageSize, &i, STSIZE);
-			//messageSize += STSIZE;
-			//memcpy(msg + messageSize, &counter, sizeof(counter));
-			//messageSize += sizeof(counter);
-			//memcpy(msg + messageSize, container, sizeof(container));
-			//messageSize += sizeof(container);
+			memcpy(msg.data() + messageSize, &vertexCount, sizeof(int));
+			messageSize += sizeof(int);
+			memcpy(msg.data() + messageSize, &counter, sizeof(int));
+			messageSize += sizeof(int);
+			memcpy(msg.data() + messageSize, &vertexList[0], vertexList.size());
+			messageSize += vertexList.size();
 
-			//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
-			//msg.Reset();
-			//messageSize = 0;
+			comlib.send(
+				msg.data(), 
+				ComLib::MSG_TYPE::UPDATEVALUES, 
+				ComLib::ATTRIBUTE_TYPE::VERTEX, 
+				messageSize
+			);
+			messageSize = 0;
 			counter = -1;
 		}
-	}
-	if (counter >= 0)
-	{
-		//memcpy(msg, &uuidSize, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &uuid[0], uuidSize);
-		//messageSize += uuidSize;
+		
+		std::vector<size_t> vertexIDs {};
+		vertexIDs.resize(10000);
+		MIntArray triangleCount	{};
+		MIntArray triangleList	{};
+		mesh.getTriangles(triangleCount, triangleList);
+		unsigned int triangleListCount {triangleList.length()};
+		
+		msg.resize(
+			STSIZE +
+			uuidSize +
+			sizeof(unsigned int)
+		);
+		memcpy(msg.data(), &uuidSize, STSIZE);
+		messageSize += STSIZE;
+		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+		messageSize += uuidSize;
+		
+		memcpy(msg.data() + messageSize, &triangleListCount, sizeof(unsigned int));
+		messageSize += sizeof(unsigned int);
+		
+		comlib.send(
+			msg.data(),
+			ComLib::MSG_TYPE::ALLOCATE,
+			ComLib::ATTRIBUTE_TYPE::VERTEXID,
+			messageSize
+		);
 
-		//memcpy(msg + messageSize, &triangleListCount, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &counter, sizeof(counter));
-		//messageSize += sizeof(counter);
-		//memcpy(msg + messageSize, container, sizeof(container));
-		//messageSize += sizeof(container);
-
-		//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
-		//msg.Reset();
-		//messageSize = 0;
-		counter = -1;
-	}
-
-	for (size_t i = 0; i < normalList.length(); ++i)
-	{
-		counter++;
-		container[counter] = normalList[i];
-
-		if (counter % 9999 == 0 && counter != 0)
+		messageSize = 0;
+		msg.resize(
+			STSIZE +
+			uuidSize +
+			sizeof(unsigned int) +
+			sizeof(int) +
+			vertexIDs.size()
+		);
+		for (UINT i = 0; i < triangleList.length(); ++i)
 		{
-			//memcpy(msg, &uuidSize, STSIZE);
-			//messageSize += STSIZE;
-			//memcpy(msg + messageSize, &uuid[0], uuidSize);
-			//messageSize += uuidSize;
-
-			//memcpy(msg + messageSize, &i, STSIZE);
-			//messageSize += STSIZE;
-			//memcpy(msg + messageSize, &counter, sizeof(counter));
-			//messageSize += sizeof(counter);
-			//memcpy(msg + messageSize, container, sizeof(container));
-			//messageSize += sizeof(container);
-
-			//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
-			//msg.Reset();
-			//messageSize = 0;
-			counter = -1;
+			counter++;
+			vertexIDs[counter] = triangleList[i];
+		
+			if (counter % 9999 == 0 && counter != 0)
+			{
+				memcpy(msg.data(), &uuidSize, STSIZE);
+				messageSize += STSIZE;
+				memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+				messageSize += uuidSize;
+		
+				memcpy(msg.data() + messageSize, &i, sizeof(unsigned int));
+				messageSize += sizeof(unsigned int);
+				memcpy(msg.data() + messageSize, &counter, sizeof(int));
+				messageSize += sizeof(int);
+				memcpy(msg.data() + messageSize, &vertexIDs[0], vertexIDs.size());
+				messageSize += vertexIDs.size();
+		
+				comlib.send(
+					msg.data(), 
+					ComLib::MSG_TYPE::UPDATEVALUES, 
+					ComLib::ATTRIBUTE_TYPE::VERTEXID, 
+					messageSize
+				);
+				messageSize = 0;
+				counter = -1;
+			}
+		}
+		if (counter >= 0)
+		{
+			memcpy(msg.data(), &uuidSize, STSIZE);
+			messageSize += STSIZE;
+			memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+			messageSize += uuidSize;
+		
+			memcpy(msg.data() + messageSize, &triangleListCount, sizeof(unsigned int));
+			messageSize += sizeof(unsigned int);
+			memcpy(msg.data() + messageSize, &counter, sizeof(int));
+			messageSize += sizeof(int);
+			memcpy(msg.data() + messageSize, &vertexIDs[0], vertexIDs.size());
+			messageSize += vertexIDs.size();
+		
+			comlib.send(
+				msg.data(),
+				ComLib::MSG_TYPE::UPDATEVALUES,
+				ComLib::ATTRIBUTE_TYPE::VERTEXID,
+				messageSize
+			);
 		}
 	}
-	if (counter >= 0)
+	else
 	{
-		//memcpy(msg, &uuidSize, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &uuid[0], uuidSize);
-		//messageSize += uuidSize;
-
-		//memcpy(msg + messageSize, &normalListCount, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &counter, sizeof(counter));
-		//messageSize += sizeof(counter);
-		//memcpy(msg + messageSize, container, sizeof(container));
-		//messageSize += sizeof(container);
-
-		//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
-		//msg.Reset();
-		//messageSize = 0;
-		counter = -1;
+		MGlobal::displayInfo("Error fetching vertex list!");
 	}
-	MGlobal::displayInfo("IDs done!");
 }
 
 //Material Micro Data
@@ -940,7 +1219,7 @@ void pSendConnectedShader(MObject& object)
 	//memcpy(msg, &shaderCount, STSIZE);
 	//messageSize += STSIZE;
 
-	for (size_t i = 0; i < shaderCount; ++i)
+	for (UINT i = 0; i < shaderCount; ++i)
 	{
 		MFnDependencyNode shader(shaderEngineArray[i]);
 		std::string shaderUuid = shader.uuid().asString().asChar();
@@ -956,83 +1235,98 @@ void pSendConnectedShader(MObject& object)
 //Type Data
 void pAllocNode(MObject& object)
 {
-	MFnDependencyNode node(object);
-	MString nodeUuid(node.uuid());
-	MString nodeName(node.name());
-	MString nodeType(node.typeName());
+	MFnDependencyNode node { object };
+	MString nodeUuid	{ node.uuid() };
+	MString nodeName	{ node.name() };
+	MString nodeType	{ node.typeName() };
 
 	if (nodeName.length() == 0)
 	{
-		MFnDagNode dag(object);
-		MString dagUuid(dag.uuid());
-		MString dagName(dag.name());
-		MString dagType(dag.typeName());
+		MGlobal::displayInfo("DAG");
+		MFnDagNode dag{ object };
+		MString dagUuid	{ dag.uuid()};
+		MString dagName	{ dag.name() };
+		MString dagType	{ dag.typeName() };
 
-		std::string name = dagName.asChar();
-		size_t nameSize = name.size();
-		std::string uuid = dagUuid.asChar();
-		size_t uuidSize = uuid.size();
-		std::string type = dagType.asChar();
-		size_t typeSize = type.size();
+		std::string name	{ dagName.asChar() };
+		size_t nameSize		{ name.size() };
+		std::string uuid	{ dagUuid.asChar() };
+		size_t uuidSize		{ uuid.size() };
+		std::string type	{ dagType.asChar() };
+		size_t typeSize		{ type.size() };
 		
-		char* msg { new char() };
-		size_t messageSize = 0;
+		std::vector<char> msg {};
+		size_t messageSize {};
 
-		memcpy(msg, &typeSize, STSIZE);
+		msg.resize(
+			msg.capacity() + 
+			(STSIZE * 3) + 
+			typeSize + 
+			nameSize + 
+			uuidSize
+		);
+		memcpy(msg.data(), &typeSize, STSIZE);
 		messageSize += STSIZE;
-		memcpy(msg + messageSize, &type[0], typeSize);
+		memcpy(msg.data() + messageSize, &type[0], typeSize);
 		messageSize += typeSize;
 		
-		memcpy(msg + messageSize, &nameSize, STSIZE);
+		memcpy(msg.data() + messageSize, &nameSize, STSIZE);
 		messageSize += STSIZE;
-		memcpy(msg + messageSize, &name[0], nameSize);
+		memcpy(msg.data() + messageSize, &name[0], nameSize);
 		messageSize += nameSize;
 		
-		memcpy(msg + messageSize, &uuidSize, STSIZE);
+		memcpy(msg.data() + messageSize, &uuidSize, STSIZE);
 		messageSize += STSIZE;
-		memcpy(msg + messageSize, &uuid[0], uuidSize);
+		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 		messageSize += uuidSize;
 
 		comlib.send(
-			reinterpret_cast<void*>(msg),
+			msg.data(),
 			ComLib::MSG_TYPE::ALLOCATE,
 			ComLib::ATTRIBUTE_TYPE::NODE,
 			messageSize);
-		delete msg;
 	}
 	else
 	{
-		std::string name = nodeName.asChar();
-		size_t nameSize = name.size();
-		std::string uuid = nodeUuid.asChar();
-		size_t uuidSize = uuid.size();
-		std::string type = nodeType.asChar();
-		size_t typeSize = type.size();
+		std::string name	{ nodeName.asChar() };
+		size_t nameSize		{ name.size() };
+		std::string uuid	{ nodeUuid.asChar() };
+		size_t uuidSize		{ uuid.size() };
+		std::string type	{ nodeType.asChar() };
+		size_t typeSize		{ type.size() };
 
-		char* msg { new char() };
-		size_t messageSize = 0;
+		std::vector<char> msg {}; 
+		size_t messageSize {};
 
-		memcpy(msg, &typeSize, STSIZE);
+		msg.resize(
+			msg.capacity() +
+			(STSIZE * 3) +
+			typeSize +
+			nameSize +
+			uuidSize
+		);
+
+
+		memcpy(msg.data(), &typeSize, STSIZE);
 		messageSize += STSIZE;
-		memcpy(msg + messageSize, &type[0], typeSize);
+		memcpy(msg.data() + messageSize, &type[0], typeSize);
 		messageSize += typeSize;
 		
-		memcpy(msg + messageSize, &nameSize, STSIZE);
+		memcpy(msg.data() + messageSize, &nameSize, STSIZE);
 		messageSize += STSIZE;
-		memcpy(msg + messageSize, &name[0], nameSize);
+		memcpy(msg.data() + messageSize, &name[0], nameSize);
 		messageSize += nameSize;
 		
-		memcpy(msg + messageSize, &uuidSize, STSIZE);
+		memcpy(msg.data() + messageSize, &uuidSize, STSIZE);
 		messageSize += STSIZE;
-		memcpy(msg + messageSize, &uuid[0], uuidSize);
+		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 		messageSize += uuidSize;
-		
+		MGlobal::displayInfo("#####");
 		comlib.send(
-			reinterpret_cast<void*>(msg),
+			msg.data(),
 			ComLib::MSG_TYPE::ALLOCATE,
 			ComLib::ATTRIBUTE_TYPE::NODE,
 			messageSize);
-		delete msg;
 	}
 }
 void pSendParentsData(MObject& object)
@@ -1094,38 +1388,66 @@ void pSendMeshData(MObject& object)
 	MStatus res;
 	MString debugString;
 	MFnMesh mesh(object);
-	std::string uuid = mesh.uuid().asString().asChar();
-	size_t uuidSize = uuid.size();
+	std::string uuid {mesh.uuid().asString().asChar()};
+	size_t uuidSize {uuid.size()};
 
-	// Will not be sent individually due to triangulation.
+	// Will not be sent individually due to attribute callbacks.
 	// Look for possible solution for separation in the future.
 	pSendVertexData(object);
+	//pSendVertexData2(object);
 
 	MObjectArray shaderEngineArray;
 	MIntArray faceIndiciesArray;
 	mesh.getConnectedShaders(0, shaderEngineArray, faceIndiciesArray);
 	size_t shaderCount = shaderEngineArray.length();
-	//ComPtr<char> msg {};
-	//size_t messageSize = 0;
-	//
-	//memcpy(msg, &uuidSize, STSIZE);
-	//messageSize += STSIZE;
-	//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//messageSize += uuidSize;
-	//memcpy(msg, &shaderCount, STSIZE);
-	//messageSize += STSIZE;
+	
+	std::vector<std::string> shaderUuids {};
+	std::vector<size_t> shaderUuidSizes {};
+	size_t totalShaderUuidSize {};
 
-	for (size_t i = 0; i < shaderCount; ++i)
+	for (UINT i = 0; i < shaderCount; ++i)
 	{
 		MFnDependencyNode shader(shaderEngineArray[i]);
 		std::string shaderUuid = shader.uuid().asString().asChar();
 		size_t shaderUuidSize = shaderUuid.size();
-		//memcpy(msg + messageSize, &shaderUuidSize, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &shaderUuid[0], shaderUuidSize);
-		//messageSize += shaderUuidSize;
+
+		shaderUuids.emplace_back(shaderUuid);
+		shaderUuidSizes.emplace_back(shaderUuidSize);
+		totalShaderUuidSize += shaderUuidSize;
 	}
-	//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::MESHSHADERS, messageSize);
+
+	std::vector<char> msg {};
+	size_t messageSize {};
+	msg.resize(
+		(STSIZE * (shaderCount + 2)) +
+		uuidSize + 
+		totalShaderUuidSize
+	);
+
+	memcpy(msg.data(), &uuidSize, STSIZE);
+	messageSize += STSIZE;
+
+	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+	messageSize += uuidSize;
+
+	memcpy(msg.data() + messageSize, &shaderCount, STSIZE);
+	messageSize += STSIZE;
+
+	for (UINT i = 0; i < shaderCount; ++i)
+	{
+		memcpy(msg.data() + messageSize, &shaderUuidSizes[i], STSIZE);
+		messageSize += STSIZE;
+
+		memcpy(msg.data() + messageSize, &shaderUuids[i][0], shaderUuidSizes[i]);
+		messageSize += shaderUuidSizes[i];
+	}
+
+	comlib.send(
+		msg.data(),
+		ComLib::MSG_TYPE::UPDATEVALUES, 
+		ComLib::ATTRIBUTE_TYPE::MESHSHADERS,
+		messageSize
+	);
 }
 void pSendCameraData(MObject& object)
 {
@@ -1138,118 +1460,162 @@ void pSendAmbientLightData(MObject& object)
 }
 void pSendPointLightData(MObject& object)
 {
-	MStatus res;
-	MString debugString;
-	MFnPointLight pointLightNode(object);
-	std::string uuid(pointLightNode.uuid().asString().asChar());
-	size_t uuidSize(uuid.size());
+	MStatus res {};
+	MString debugString {};
+	MFnPointLight pointLightNode {object};
+	std::string uuid {pointLightNode.uuid().asString().asChar()};
+	size_t uuidSize {uuid.size()};
 
 	debugString = pointLightNode.decayRate();
 	MGlobal::displayInfo(debugString);
-	//ComPtr<char> msg {};
-	//size_t messageSize = 0;
-	//
-	//size_t intensity = static_cast<size_t>(pointLightNode.intensity());
-	//double color[3] = { pointLightNode.color().r, 
-	//					pointLightNode.color().g,
-	//					pointLightNode.color().b };
-	//
-	//memcpy(msg, &uuidSize, STSIZE);
-	//messageSize += STSIZE;
-	//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//messageSize += uuidSize;
-	//memcpy(msg + messageSize, &intensity, STSIZE);
-	//messageSize += STSIZE;
-	//memcpy(msg + messageSize, &color, sizeof(color);
-	//messageSize += sizeof(color);
-	//
-	//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::POINTINTENSITY)
+	std::vector<char> msg {};
+	size_t messageSize {};
+	
+	float intensity {pointLightNode.intensity()};
+	float color[3] { 
+		pointLightNode.color().r, 
+		pointLightNode.color().g,
+		pointLightNode.color().b 
+	};
+	
+	msg.resize(
+		STSIZE +
+		uuidSize +
+		sizeof(float) +
+		sizeof(float[3])
+	);
+	memcpy(msg.data(), &uuidSize, STSIZE);
+	messageSize += STSIZE;
+	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+	messageSize += uuidSize;
+	memcpy(msg.data() + messageSize, &intensity, sizeof(float));
+	messageSize += sizeof(float);
+	memcpy(msg.data() + messageSize, &color, sizeof(color));
+	messageSize += sizeof(color);
+	
+	comlib.send(
+		msg.data(),
+		ComLib::MSG_TYPE::UPDATEVALUES,
+		ComLib::ATTRIBUTE_TYPE::POINTINTENSITY,
+		messageSize
+	);
 
 }
 void pSendTextureData(MObject& object)
 {
-	MStatus res;
-	MString debugString;
-	char* msg {new char()};
-	size_t messageSize = 0;
+	MStatus res{};
+	MString debugString{};
+	std::vector<char> msg {};
+	size_t messageSize{};
 
-	MFnDependencyNode textureNode(object);
-	std::string uuid = textureNode.uuid().asString().asChar();
-	size_t uuidSize = uuid.size();
-	bool existingTexture{ 0 };
+	MFnDependencyNode textureNode	{ object };
+	std::string uuid { textureNode.uuid().asString().asChar() };
+	size_t uuidSize{ uuid.size() };
+	bool existingTexture{};
 
-	MPlug fileNamePlug = textureNode.findPlug("fileTextureName", res);
+	MPlug fileNamePlug { textureNode.findPlug("fileTextureName", res) };
 	if (res == MS::kSuccess)
 	{
-		MString texturePathString;
+		MString texturePathString{};
 		fileNamePlug.getValue(texturePathString);
 		
 		if (texturePathString.length() > 0)
 		{		
-			std::string texturePath = texturePathString.asChar();
-			size_t pathSize = texturePath.size();
+			std::string texturePath{ texturePathString.asChar() };
+			size_t pathSize{ texturePath.size() };
 			existingTexture = 1;
 
-			memcpy(msg, &uuidSize, STSIZE);
+			msg.resize(
+				(STSIZE * 2) +
+				uuidSize +
+				sizeof(bool) +
+				pathSize
+			);
+			memcpy(msg.data(), &uuidSize, STSIZE);
 			messageSize += STSIZE;
-			memcpy(msg + messageSize, &uuid[0], uuidSize);
+			memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 			messageSize += uuidSize;
 			
-			memcpy(msg + messageSize, &existingTexture, sizeof(bool));
+			memcpy(msg.data() + messageSize, &existingTexture, sizeof(bool));
 			messageSize += sizeof(bool);
 
-			memcpy(msg + messageSize, &pathSize, STSIZE);
+			memcpy(msg.data() + messageSize, &pathSize, STSIZE);
 			messageSize += STSIZE;
-			memcpy(msg + messageSize, &texturePath[0], pathSize);
+			memcpy(msg.data() + messageSize, &texturePath[0], pathSize);
 			messageSize += pathSize;
 
-			comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::TEXPATH, messageSize);
+			comlib.send(
+				msg.data(), 
+				ComLib::MSG_TYPE::UPDATEVALUES, 
+				ComLib::ATTRIBUTE_TYPE::TEXPATH, 
+				messageSize);
 		}
 	}
-	delete msg;
 }
 void pSendBumpData(MObject& object)
 {
-	MStatus res;
-	MFnDependencyNode bumpMap(object);
-	std::string bumpUuid = bumpMap.uuid().asString().asChar();
-	size_t bumpUuidSize = bumpUuid.size();
-	size_t messageSize = 0;
-	
-	MPlug bumpValuePlug = bumpMap.findPlug("bumpValue", res);
-	if (!res)
+	MStatus res{};
+	MFnDependencyNode bumpMap{object};
+	std::string bumpUuid{ bumpMap.uuid().asString().asChar() };
+	size_t bumpUuidSize  { bumpUuid.size() };
+	size_t messageSize	 {};
+
+	MPlug bumpValuePlug	{ bumpMap.findPlug("bumpValue", res) };
+	if (res == MS::kSuccess)
 	{
-		char* msg {new char()};
-		memcpy(msg, &bumpUuidSize, STSIZE);
+		MPlugArray textureFileArray{};
+		bumpValuePlug.connectedTo(textureFileArray, true, false);
+		size_t filesLength{ textureFileArray.length() };
+
+		std::vector<std::string> textureUuids {};
+		std::vector<size_t> textureUuidSizes {};
+		size_t totalTextureUuidSize {};
+
+		for (UINT i = 0; i < filesLength; ++i)
+		{
+			MFnDependencyNode textureNode{ textureFileArray[i].node() };
+			std::string textureUuid{ textureNode.uuid().asString().asChar() };
+			size_t textureUuidSize{ textureUuid.size() };
+
+			textureUuids.emplace_back(textureUuid);
+			textureUuidSizes.emplace_back(textureUuidSize);
+			totalTextureUuidSize += textureUuidSize;
+		}
+		std::vector<char> msg {};
+		msg.resize(
+			(STSIZE * (2 + filesLength)) + 
+			bumpUuidSize +
+			totalTextureUuidSize
+		);
+		memcpy(msg.data(), &bumpUuidSize, STSIZE);
 		messageSize += STSIZE;
-		memcpy(msg + messageSize, &bumpUuid[0], bumpUuidSize);
+		memcpy(msg.data() + messageSize, &bumpUuid[0], bumpUuidSize);
 		messageSize += bumpUuidSize;
 
-		MPlugArray textureFileArray;
-		bumpValuePlug.connectedTo(textureFileArray, true, false);
-		size_t filesLength = textureFileArray.length();
-		memcpy(msg + messageSize, &filesLength, STSIZE);
+		memcpy(msg.data() + messageSize, &filesLength, STSIZE);
 		messageSize += STSIZE;
-		for (size_t j = 0; j < filesLength; ++j)
+
+		for (UINT i = 0; i < filesLength; ++i)
 		{
-			MFnDependencyNode textureNode(textureFileArray[j].node());
-			std::string textureUuid = textureNode.uuid().asString().asChar();
-			size_t textureUuidSize = textureUuid.size();
-			memcpy(msg + messageSize, &textureUuidSize, STSIZE);
+			memcpy(msg.data() + messageSize, &textureUuidSizes[i], STSIZE);
 			messageSize += STSIZE;
-			memcpy(msg + messageSize, &textureUuid[0], textureUuidSize);
-			messageSize += textureUuidSize;
+			memcpy(msg.data() + messageSize, &textureUuids[i][0], textureUuidSizes[i]);
+			messageSize += textureUuidSizes[i];
 		}
-		comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::BUMPTEXTURE, messageSize);
-		delete msg;
+
+		comlib.send(
+			msg.data(), 
+			ComLib::MSG_TYPE::UPDATEVALUES,
+			ComLib::ATTRIBUTE_TYPE::BUMPTEXTURE,
+			messageSize);
 	}
 }
 void pSendMaterialData(MObject& object)
 {
-	MStatus res;
-	MString debugString;
+	MStatus res{};
+	MString debugString{};
 
-	MFnDependencyNode materialNode(object);
+	MFnDependencyNode materialNode{ object };
 	MString materialUuid{ materialNode.uuid() };
 	std::string matUuid{ materialUuid.asChar() };
 	size_t matUuidSize{ matUuid.size() };
@@ -1265,34 +1631,56 @@ void pSendMaterialData(MObject& object)
 			if (colorPlug.isConnected())
 			{
 				bool connection{ 1 };
-				char* msg {new char()};
-				size_t messageSize {};
-				
-				memcpy(msg, &matUuidSize, STSIZE);
-				messageSize += STSIZE;
-				memcpy(msg + messageSize, &matUuid[0], matUuidSize);
-				messageSize += matUuidSize;
-				memcpy(msg + messageSize, &connection, sizeof(bool));
-				messageSize += sizeof(bool);
 
 				MPlugArray textures{};
 				colorPlug.connectedTo(textures, true, false);
 				size_t textureLength{ textures.length() };
-				memcpy(msg + messageSize, &textureLength, STSIZE);
-				messageSize += STSIZE;
-				for (size_t i = 0; i < textureLength; ++i)
-				{
-					MFnDependencyNode texture(textures[i].node());
-					std::string textureUuid{ texture.uuid().asString().asChar() };
-					size_t texUuidSize{ textureUuid.size() };
+				std::vector<std::string> textureUuids{};
+				std::vector<size_t> textureUuidSizes{};
+				size_t totalTextureUuidSize {};
 
-					memcpy(msg + messageSize, &texUuidSize, STSIZE);
-					messageSize += STSIZE;
-					memcpy(msg + messageSize, &textureUuid[0], texUuidSize);
-					messageSize += texUuidSize;
+				for (UINT i = 0; i < textureLength; ++i)
+				{
+					MFnDependencyNode texture{ textures[i].node() };
+					std::string textureUuid{ texture.uuid().asString().asChar() };
+					size_t textureUuidSize{ textureUuid.size() };
+					
+					textureUuids.emplace_back(textureUuid);
+					textureUuidSizes.emplace_back(textureUuidSize);
+					totalTextureUuidSize += textureUuidSize;
 				}
-				comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::SHCOLORMAP, messageSize);
-				delete msg;
+
+				std::vector<char> msg {};
+				size_t messageSize {};
+				
+				msg.resize(
+					STSIZE * (2 + textureLength) + 
+					matUuidSize + 
+					sizeof(bool) +
+					totalTextureUuidSize
+				);
+				memcpy(msg.data(), &matUuidSize, STSIZE);
+				messageSize += STSIZE;
+				memcpy(msg.data() + messageSize, &matUuid[0], matUuidSize);
+				messageSize += matUuidSize;
+				memcpy(msg.data() + messageSize, &connection, sizeof(bool));
+				messageSize += sizeof(bool);
+				memcpy(msg.data() + messageSize, &textureLength, STSIZE);
+				messageSize += STSIZE;
+
+				for (UINT i = 0; i < textureLength; ++i)
+				{
+					memcpy(msg.data() + messageSize, &textureUuidSizes[i], STSIZE);
+					messageSize += STSIZE;
+					memcpy(msg.data() + messageSize, &textureUuids[i][0], textureUuidSizes[i]);
+					messageSize += textureUuidSizes[i];
+				}
+
+				comlib.send(
+					msg.data(), 
+					ComLib::MSG_TYPE::UPDATEVALUES, 
+					ComLib::ATTRIBUTE_TYPE::SHCOLORMAP,
+					messageSize);
 			}
 			else
 			{
@@ -1310,34 +1698,58 @@ void pSendMaterialData(MObject& object)
 			if (ambientColorPlug.isConnected())
 			{
 				bool connection{ 1 };
-				char* msg {new char()};
-				size_t messageSize{ 0 };
 				
-				memcpy(msg, &matUuidSize, STSIZE);
-				messageSize += STSIZE;
-				memcpy(msg + messageSize, &matUuid[0], matUuidSize);
-				messageSize += matUuidSize;
-				memcpy(msg + messageSize, &connection, sizeof(bool));
-				messageSize += sizeof(bool);
-
 				MPlugArray textures{};
-				colorPlug.connectedTo(textures, true, false);
+				ambientColorPlug.connectedTo(textures, true, false);
 				size_t textureLength{ textures.length() };
-				memcpy(msg + messageSize, &textureLength, STSIZE);
-				messageSize += STSIZE;
-				for (size_t i = 0; i < textureLength; ++i)
+				std::vector<std::string> textureUuids{};
+				std::vector<size_t> textureUuidSizes{};
+				size_t totalTextureUuidSize{};
+
+				for (UINT i = 0; i < textureLength; ++i)
 				{
-					MFnDependencyNode texture(textures[i].node());
+					MFnDependencyNode texture{ textures[i].node() };
 					std::string textureUuid{ texture.uuid().asString().asChar() };
 					size_t texUuidSize {textureUuid.size()};
 
-					memcpy(msg + messageSize, &texUuidSize, STSIZE);
-					messageSize += STSIZE;
-					memcpy(msg + messageSize, &textureUuid[0], texUuidSize);
-					messageSize += texUuidSize;
+					textureUuids.emplace_back(textureUuid);
+					textureUuidSizes.emplace_back(texUuidSize);
+					totalTextureUuidSize += texUuidSize;
 				}
-				comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::SHAMBIENTCOLORMAP, messageSize);
-				delete msg;
+
+				std::vector<char> msg {};
+				size_t messageSize{};
+
+				msg.resize( 
+					STSIZE *(2 + textureLength) + 
+					matUuidSize + 
+					sizeof(bool) + 
+					totalTextureUuidSize
+				);
+
+				memcpy(msg.data(), &matUuidSize, STSIZE);
+				messageSize += STSIZE;
+				memcpy(msg.data() + messageSize, &matUuid[0], matUuidSize);
+				messageSize += matUuidSize;
+				memcpy(msg.data() + messageSize, &connection, sizeof(bool));
+				messageSize += sizeof(bool);
+
+				memcpy(msg.data() + messageSize, &textureLength, STSIZE);
+				messageSize += STSIZE;
+
+				for (UINT i = 0; i < textureLength; ++i)
+				{
+					memcpy(msg.data() + messageSize, &textureUuidSizes[i], STSIZE);
+					messageSize += STSIZE;
+					memcpy(msg.data() + messageSize, &textureUuids[i][0], textureUuidSizes[i]);
+					messageSize += textureUuidSizes[i];
+				}
+
+				comlib.send(
+					msg.data(), 
+					ComLib::MSG_TYPE::UPDATEVALUES, 
+					ComLib::ATTRIBUTE_TYPE::SHAMBIENTCOLORMAP, 
+					messageSize);
 			}
 			else
 			{
@@ -1355,34 +1767,57 @@ void pSendMaterialData(MObject& object)
 			if (transparencyPlug.isConnected())
 			{
 				bool connection{ 1 };
-				char* msg {new char()};
-				size_t messageSize{};
 				
-				memcpy(msg, &matUuidSize, STSIZE);
-				messageSize += STSIZE;
-				memcpy(msg + messageSize, &matUuid[0], matUuidSize);
-				messageSize += matUuidSize;
-				memcpy(msg + messageSize, &connection, sizeof(bool));
-				messageSize += sizeof(bool);
-
 				MPlugArray textures{};
-				colorPlug.connectedTo(textures, true, false);
+				transparencyPlug.connectedTo(textures, true, false);
 				size_t textureLength{ textures.length() };
-				memcpy(msg + messageSize, &textureLength, STSIZE);
-				messageSize += STSIZE;
-				for (size_t i = 0; i < textureLength; ++i)
+				std::vector<std::string> textureUuids{};
+				std::vector<size_t> textureUuidSizes{};
+				size_t totalTextureUuidSize{};
+
+				for (UINT i = 0; i < textureLength; ++i)
 				{
-					MFnDependencyNode texture(textures[i].node());
+					MFnDependencyNode texture{ textures[i].node() };
 					std::string textureUuid{ texture.uuid().asString().asChar() };
 					size_t texUuidSize {textureUuid.size()};
 
-					memcpy(msg + messageSize, &texUuidSize, STSIZE);
-					messageSize += STSIZE;
-					memcpy(msg + messageSize, &textureUuid[0], texUuidSize);
-					messageSize += texUuidSize;
+					textureUuids.emplace_back(textureUuid);
+					textureUuidSizes.emplace_back(texUuidSize);
+					totalTextureUuidSize += texUuidSize;
 				}
-				comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::SHTRANSPARANCYMAP, messageSize);
-				delete msg;
+
+				std::vector<char> msg {};
+				size_t messageSize{};
+
+				msg.resize(
+					STSIZE * (2 + textureLength) +
+					matUuidSize +
+					sizeof(bool) +
+					totalTextureUuidSize
+				);
+				memcpy(msg.data(), &matUuidSize, STSIZE);
+				messageSize += STSIZE;
+				memcpy(msg.data() + messageSize, &matUuid[0], matUuidSize);
+				messageSize += matUuidSize;
+				memcpy(msg.data() + messageSize, &connection, sizeof(bool));
+				messageSize += sizeof(bool);
+				
+				memcpy(msg.data() + messageSize, &textureLength, STSIZE);
+				messageSize += STSIZE;
+
+				for (UINT i = 0; i < textureLength; ++i)
+				{
+					memcpy(msg.data() + messageSize, &textureUuidSizes[i], STSIZE);
+					messageSize += STSIZE;
+					memcpy(msg.data() + messageSize, &textureUuids[i][0], textureUuidSizes[i]);
+					messageSize += textureUuidSizes[i];
+				}
+
+				comlib.send(
+					msg.data(), 
+					ComLib::MSG_TYPE::UPDATEVALUES, 
+					ComLib::ATTRIBUTE_TYPE::SHTRANSPARANCYMAP,
+					messageSize);
 			}
 			else
 			{
@@ -1398,53 +1833,81 @@ void pSendMaterialData(MObject& object)
 			if (normalMapPlug.isConnected())
 			{
 				bool connection{ 1 };
-				char* msg {new char()};
-				size_t messageSize{ 0 };
-
-				memcpy(msg, &matUuidSize, STSIZE);
-				messageSize += STSIZE;
-				memcpy(msg + messageSize, &matUuid[0], matUuidSize);
-				messageSize += matUuidSize;
-				memcpy(msg + messageSize, &connection, sizeof(bool));
-				messageSize += sizeof(bool);
-
 				MPlugArray bumps{};
 				normalMapPlug.connectedTo(bumps, true, false);
 				size_t bumpsLength{ bumps.length() };
-				memcpy(msg + messageSize, &bumpsLength, STSIZE);
-				messageSize += STSIZE;
-				for (size_t i = 0; i < bumpsLength; ++i)
+				std::vector<std::string> bumpUuids {};
+				std::vector<size_t>	bumpUuidSizes {};
+				size_t totalBumpUuidSizes {};
+
+				for (UINT i = 0; i < bumpsLength; ++i)
 				{
 					MObject bumpObject{ bumps[i].node() };
-					MFnDependencyNode bumpMap(bumpObject);
+					MFnDependencyNode bumpMap{ bumpObject };
 					std::string bumpUuid{ bumpMap.uuid().asString().asChar() };
 					size_t bumpUuidSize{ bumpUuid.size() };
 
-					//Update the data for bump nodes in msg2! Since data isn't accessable earlier.
-					char* msg2{ new char() };
-					size_t messageSize2{ 0 };
-
-					// Shader Node
-					memcpy(msg + messageSize, &bumpUuidSize, STSIZE);
-					messageSize += STSIZE;
-					memcpy(msg + messageSize, &bumpUuid[0], bumpUuidSize);
-					messageSize += bumpUuidSize;
+					bumpUuids.emplace_back(bumpUuid);
+					bumpUuidSizes.emplace_back(bumpUuidSize);
+					totalBumpUuidSizes += bumpUuidSize;
 
 					// Bump Node
-					memcpy(msg2, &bumpUuidSize, STSIZE);
+					//Update the data for bump nodes in msg2! Since data isn't accessable earlier.
+					std::vector<char> msg2 {};
+					size_t messageSize2{};
+
+					msg2.resize(
+						(STSIZE * 2) + 
+						bumpUuidSize + 
+						matUuidSize);
+					memcpy(msg2.data(), &bumpUuidSize, STSIZE);
 					messageSize2 += STSIZE;
-					memcpy(msg2 + messageSize2, &bumpUuid[0], bumpUuidSize);
+					memcpy(msg2.data() + messageSize2, &bumpUuid[0], bumpUuidSize);
 					messageSize2 += bumpUuidSize;
 					// Don't forget to append on receiving end if not already existing!
-					memcpy(msg2 + messageSize2, &matUuidSize, STSIZE);
+					memcpy(msg2.data() + messageSize2, &matUuidSize, STSIZE);
 					messageSize2 += STSIZE;
-					memcpy(msg2 + messageSize2, &matUuid[0], matUuidSize);
+					memcpy(msg2.data() + messageSize2, &matUuid[0], matUuidSize);
 					messageSize2 += matUuidSize;
-					comlib.send(msg2, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::BUMPSHADER, messageSize2);
-					delete msg2;
+					comlib.send(
+						msg2.data(),
+						ComLib::MSG_TYPE::UPDATEVALUES,
+						ComLib::ATTRIBUTE_TYPE::BUMPSHADER,
+						messageSize2);
 				}
-				comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMALMAP, messageSize);
-				delete msg;
+
+				std::vector<char> msg {};
+				size_t messageSize{};
+
+				msg.resize(
+					STSIZE * (2 + bumpsLength) + 
+					matUuidSize + 
+					sizeof(bool) +
+					totalBumpUuidSizes
+				);
+				memcpy(msg.data(), &matUuidSize, STSIZE);
+				messageSize += STSIZE;
+				memcpy(msg.data() + messageSize, &matUuid[0], matUuidSize);
+				messageSize += matUuidSize;
+				memcpy(msg.data() + messageSize, &connection, sizeof(bool));
+				messageSize += sizeof(bool);
+
+				memcpy(msg.data() + messageSize, &bumpsLength, STSIZE);
+				messageSize += STSIZE;
+
+				for (UINT i = 0; i < bumpsLength; ++i)
+				{
+					memcpy(msg.data() + messageSize, &bumpUuidSizes[i], STSIZE);
+					messageSize += STSIZE;
+					memcpy(msg.data() + messageSize, &bumpUuids[i][0], bumpUuidSizes[i]);
+					messageSize += bumpUuidSizes[i];
+				}
+
+				comlib.send(
+					msg.data(), 
+					ComLib::MSG_TYPE::UPDATEVALUES, 
+					ComLib::ATTRIBUTE_TYPE::NORMALMAP, 
+					messageSize);
 			}
 			else
 			{
@@ -1457,68 +1920,96 @@ void pSendMaterialData(MObject& object)
 }
 void pSendShaderGroupData(MObject& object)
 {
-	MStatus res;
-	MString debugString;
-	char* msg {new char()};
-	size_t messageSize = 0;
-	MFnDependencyNode shaderGroup(object);
-	std::string uuid = shaderGroup.uuid().asString().asChar();
-	size_t uuidSize = uuid.size();
+	MStatus res{};
+	MString debugString {};
+	MFnDependencyNode shaderGroup{ object };
+	std::string uuid{ shaderGroup.uuid().asString().asChar() };
+	size_t uuidSize{ uuid.size()};
 
 	// find the connected shader
-	MPlug surfaceShader(shaderGroup.findPlug("surfaceShader", res));
+	MPlug surfaceShader{ shaderGroup.findPlug("surfaceShader", res) };
 	if (surfaceShader.isConnected())
 	{
-		//MGlobal::displayInfo("Connected!");
-
-		//memcpy(msg, &uuidSize, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &uuid[0], uuidSize);
-		//messageSize += uuidSize;
-
-		MPlugArray shaders;
+		MPlugArray shaders {};
 		surfaceShader.connectedTo(shaders, true, false);
-		size_t shadersCount = shaders.length();
-		//memcpy(msg + messageSize, &shadersCount, messageSize);
-		//messageSize += messageSize;
-		for (size_t i = 0; i < shadersCount; ++i)
-		{
-			MFnDependencyNode shader(shaders[i].node());
-			std::string shaderUuid = shader.uuid().asString().asChar();
-			size_t shaderUuidSize = shaderUuid.size();
+		size_t shaderCount {shaders.length()};
+		std::vector<std::string> shaderUuids {};
+		std::vector<size_t> shaderUuidSizes {};
+		size_t totalShaderUuidSize {};
 
-			//memcpy(msg, &shaderUuidSize, STSIZE);
-			//messageSize += STSIZE;
-			//memcpy(msg + messageSize, &shaderUuid[0], shaderUuidSize);
-			//messageSize += shaderUuidSize;
+		for (UINT i = 0; i < shaderCount; ++i)
+		{
+			MFnDependencyNode shader {shaders[i].node()};
+			std::string shaderUuid {shader.uuid().asString().asChar()};
+			size_t shaderUuidSize {shaderUuid.size()};
+			
+			shaderUuids.emplace_back(shaderUuid);
+			shaderUuidSizes.emplace_back(shaderUuidSize);
+			totalShaderUuidSize += shaderUuidSize;
 		}
-		//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::SESURFACE, messageSize);
+
+		std::vector<char> msg {};
+		size_t messageSize {};
+
+		msg.resize(
+			(sizeof(size_t)) * (2 + shaderCount) +
+			uuidSize +
+			totalShaderUuidSize
+		);
+
+		memcpy(msg.data(), &uuidSize, STSIZE);
+		messageSize += STSIZE;
+		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+		messageSize += uuidSize;
+		memcpy(msg.data() + messageSize, &shaderCount, STSIZE);
+		messageSize += STSIZE;
+		
+		for (UINT i = 0; i < shaderCount; ++i)
+		{
+			memcpy(msg.data() + messageSize, &shaderUuidSizes[i], STSIZE);
+			messageSize += STSIZE;
+
+			memcpy(msg.data() + messageSize, &shaderUuids[i][0], shaderUuidSizes[i]);
+			messageSize += shaderUuidSizes[i];
+		}
+
+		comlib.send(
+			msg.data(),
+			ComLib::MSG_TYPE::UPDATEVALUES,
+			ComLib::ATTRIBUTE_TYPE::SESURFACE,
+			messageSize);
+
+		// No Access to connected meshes!
+		// Connections have to be collected and appended through connectedShaders in meshes!
+		// Figure out a fix, no point having shader engine otherwise.
+		/*
+			MFnSet meshSet(shaderGroup.findPlug("dagSetMembers", res));
+			debugString = meshSet.attributeCount();
+			MGlobal::displayInfo(debugString);
+			MPlugArray meshes;
+			meshSet.getConnections(meshes);
+			debugString = meshes.length();
+			MGlobal::displayInfo(debugString);
+
+			MPlug meshPlugList(shaderGroup.findPlug("dagSetMembers", res));
+			debugString = meshPlugList.numChildren();
+			MGlobal::displayInfo(debugString);
+			for (size_t i = 0; i < meshPlugList.numChildren(); ++i)
+			{
+				MPlug meshPlug(meshPlugList.child(i));
+				debugString = meshPlug.name();
+				MGlobal::displayInfo(debugString);
+			}
+		*/
+	}
+	else
+	{
+		debugString = "No Material connected to SE: ";
+		debugString += uuid.c_str();
+		MGlobal::displayInfo(debugString);
 	}
 
-	// No Access to connected meshes!
-	// Connections have to be collected and appended through connectedShaders in meshes!
-	// Figure out a fix, no point having shader engine otherwise.
-	/*
-		MFnSet meshSet(shaderGroup.findPlug("dagSetMembers", res));
-		debugString = meshSet.attributeCount();
-		MGlobal::displayInfo(debugString);
-		MPlugArray meshes;
-		meshSet.getConnections(meshes);
-		debugString = meshes.length();
-		MGlobal::displayInfo(debugString);
-
-		MPlug meshPlugList(shaderGroup.findPlug("dagSetMembers", res));
-		debugString = meshPlugList.numChildren();
-		MGlobal::displayInfo(debugString);
-		for (size_t i = 0; i < meshPlugList.numChildren(); ++i)
-		{
-			MPlug meshPlug(meshPlugList.child(i));
-			debugString = meshPlug.name();
-			MGlobal::displayInfo(debugString);
-		}
-	*/
 }
-
 
 void pNameChangeCallback(MObject& object, const MString& lastName, void* clientData)
 {
@@ -1661,7 +2152,7 @@ void pAttributeChangedCallback(MNodeMessage::AttributeMessage msg, MPlug& plug, 
 				attributeName == "vertexNormal"*/
 				attributeName == "outMesh")
 			{
-				pSendVertexData(nodeObject);
+				//pSendVertexData(nodeObject);
 			}
 			break;
 		case MFn::kPointLight:
@@ -2095,25 +2586,25 @@ void pCreateAddCallbackChildNode(MObject& currentObject)
 		switch (childObject.apiType())
 		{
 		case MFn::kTransform:
-			pAddNodeCallbacks(childObject);
+			//pAddNodeCallbacks(childObject);
 			pAllocNode(childObject);
-			pSendTransformData(childObject);
+			//pSendTransformData(childObject);
 			break;
 
 		case MFn::kMesh:
-			pAddNodeCallbacks(childObject);
-			pAllocNode(childObject);
-			pSendMeshData(childObject);
+			//pAddNodeCallbacks(childObject);
+			//pAllocNode(childObject);
+			//pSendMeshData(childObject);
 			break;
 
 		case MFn::kCamera:
-			pAddNodeCallbacks(childObject);
-			pAllocNode(childObject);
-			pSendCameraData(childObject);
+			//pAddNodeCallbacks(childObject);
+			//pAllocNode(childObject);
+			//pSendCameraData(childObject);
 			break;
 
 		case MFn::kPointLight:
-			pAddNodeCallbacks(childObject);
+			//pAddNodeCallbacks(childObject);
 			pAllocNode(childObject);
 			pSendPointLightData(childObject);
 			break;
@@ -2156,20 +2647,20 @@ void pGetExistingMaterials()
 	for (; !fileIt.isDone(); fileIt.next())
 	{
 		MObject textureObject(fileIt.thisNode());
-		pAddNodeCallbacks(textureObject);
+		//pAddNodeCallbacks(textureObject);
 		pAllocNode(textureObject);
 		pSendTextureData(textureObject);
-	}
+	} 
 
 	//Iterate through all bump nodes (Unnecessary node atm? Maya internal system, extra step.)
 	MItDependencyNodes bumpIt(MFn::kBump);
 	for (; !bumpIt.isDone(); bumpIt.next())
 	{
 		MObject bumpObject(bumpIt.thisNode());
-		pAddNodeCallbacks(bumpObject);
+		//pAddNodeCallbacks(bumpObject);
 		pAllocNode(bumpObject);
-
-		// Append shaders to outNormal in shaders, after pull iteration.
+		//
+		//// Append shaders to outNormal in shaders, after pull iteration.
 		// Bump output Plugs are nullptr : MS::kInvalid since pull from shader hasn't been initiated.
 		pSendBumpData(bumpObject);
 	}
@@ -2181,13 +2672,13 @@ void pGetExistingMaterials()
 		for (; !shaderIt.isDone(); shaderIt.next())
 		{
 			MObject shaderObject(shaderIt.thisNode());
-			pAddNodeCallbacks(shaderObject);
+			//pAddNodeCallbacks(shaderObject);
 			pAllocNode(shaderObject);
-	
+			//
 			pSendMaterialData(shaderObject);
 		}
 	}
-	
+
 	// Iterate through ShaderEngines(SE) (For sorting meshes and shaders, several meshes can share one shader)
 	MItDependencyNodes engineIt(MFn::kShadingEngine);
 	for (; !engineIt.isDone(); engineIt.next())
@@ -2197,13 +2688,12 @@ void pGetExistingMaterials()
 		// Make sure not to include SE for particles or other unecessary types (unless wanted). Filter here.
 		if (engine.name() != "initialParticleSE")
 		{
-			pAddNodeCallbacks(groupObject);
+			//pAddNodeCallbacks(groupObject);
 			pAllocNode(groupObject);
-	
+			
 			pSendShaderGroupData(groupObject);
 		}
 	}
-
 }
 void pGetExistingScene()
 {
@@ -2222,40 +2712,47 @@ void pGetExistingScene()
 	MFnDagNode camDAG(camShapeDagPath.node());
 	MFnDagNode rootDAG(camDAG.dagRoot());
 
-	pGetExistingMaterials();
+	MObject	worldMatrixObject { rootDAG.object() };
+	pAllocNode(worldMatrixObject);
+	pSendTransformData(worldMatrixObject);
 
-	////Go through existing objects in the scene.
-	//for (UINT i = 0; i < rootDAG.childCount(); ++i)
-	//{
-	//	//Will probably be a transform, if statement to ensure not to stumble upon unexpected results.
-	//	//Since we want to find the transformer for our objects anyway. (Typename hardcoded, possible fix?)
-	//	MFnDagNode rootChildDAG(rootDAG.child(i));
-	//	if (rootChildDAG.typeName() == "transform")
-	//	{
-	//		MObject rootChildObject(rootChildDAG.object());
-	//		MString rootChildName(rootChildDAG.name());
-	//
-	//		//Hard-coded. Possible automation
-	//		//Filter internal essencial scene objects, carefull when modifying
-	//		if (rootChildName != "groundPlane_transform"
-	//			&& rootChildName != "defaultUfeProxyParent"
-	//			&& rootChildName != "shaderBallCamera1"
-	//			&& rootChildName != "shaderBallOrthoCamera1"
-	//			&& rootChildName != "MayaMtlView_FillLight1"
-	//			&& rootChildName != "MayaMtlView_RimLight1")
-	//		{
-	//			pAddNodeCallbacks(rootChildObject);
-	//			pAllocNode(rootChildObject);
-	//			pSendTransformData(rootChildObject);
-	//
-	//			if (rootChildDAG.childCount())
-	//			{
-	//				pCreateAddCallbackChildNode(rootChildObject);
-	//			}
-	//		}
-	//	}
-	//}
-	//
+	//pGetExistingMaterials();
+	//DONE
+	//Go through existing objects in the scene.
+	for (UINT i = 0; i < rootDAG.childCount(); ++i)
+	{
+		//Will probably be a transform, if statement to ensure not to stumble upon unexpected results.
+		//Since we want to find the transformer for our objects anyway. (Typename hardcoded, possible fix?)
+		MFnDagNode rootChildDAG(rootDAG.child(i));
+		if (rootChildDAG.typeName() == "transform")
+		{
+			MObject rootChildObject(rootChildDAG.object());
+			MString rootChildName(rootChildDAG.name());
+	
+			//Hard-coded. Possible automation?
+			//Filter internal essencial scene objects, carefull when modifying
+			if (rootChildName != "groundPlane_transform"
+				&& rootChildName != "defaultUfeProxyParent"
+				&& rootChildName != "shaderBallCamera1"
+				&& rootChildName != "shaderBallOrthoCamera1"
+				&& rootChildName != "shaderBallGeomShape1"
+				&& rootChildName != "shaderBallGeom1"
+				&& rootChildName != "MayaMtlView_FillLight1"
+				&& rootChildName != "MayaMtlView_RimLight1"
+				&& rootChildName != "MayaMtlView_KeyLight1")
+			{
+				//pAddNodeCallbacks(rootChildObject);
+				pAllocNode(rootChildObject);
+				pSendTransformData(rootChildObject);
+	
+				if (rootChildDAG.childCount())
+				{
+					pCreateAddCallbackChildNode(rootChildObject);
+				}
+			}
+		}
+	}
+	
 	//pSendActiveCamera(camDAG);
 }
 
@@ -2298,15 +2795,14 @@ EXPORT MStatus initializePlugin(MObject obj)
 	}
 
 	//#### Query all the existing data in the scene
-	char* msg {};
+	std::vector<char> msg {};
 	size_t messageSize = 0;
-	comlib.send(msg, ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::EXSTART, messageSize);
+	comlib.send(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::EXSTART, messageSize);
 	
 	pGetExistingScene();
 	//pGetParentChildRelationship();
 
-	comlib.send(msg, ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::EXEND, messageSize);
-	delete msg;
+	comlib.send(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::EXEND, messageSize);
 	//####
 
 	//MCallbackId nodeAddedId{ MDGMessage::addNodeAddedCallback(

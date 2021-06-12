@@ -2,8 +2,8 @@
 
 DX::DX()
 {
-	this->comlib = new ComLib("sharedFileMap", (1ULL << ((64ULL * 25000000ULL) - 1ULL)));
-	this->connectionStatus = new ComLib("connection", 1ULL << ((64ULL * 10ULL) - 1ULL));
+	this->comlib = new ComLib("sharedFileMap", (25ULL << 23ULL)); //200MB
+	this->connectionStatus = new ComLib("connection", 200ULL << 12ULL); //100Kb
 }
 DX::~DX()
 {
@@ -11,6 +11,252 @@ DX::~DX()
 	delete connectionStatus;
 }
 
+void DX::updatePointLight(char* msg)
+{
+	size_t messageOffset {};
+	size_t uuidSize {};
+	std::string uuid {};
+
+	memcpy(&uuidSize, msg, STSIZE);
+	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
+	memcpy(&uuid[0], msg + messageOffset, uuidSize);
+	messageOffset += uuidSize;
+
+	NODETYPES::Node* node {this->findNode(uuid)};
+	if (node)
+	{
+		NODETYPES::PointLight* pointLight { dynamic_cast<NODETYPES::PointLight*>(node) };
+		if (pointLight)
+		{
+			float intensity {};
+			float color[3]{};
+
+			memcpy(&intensity, msg + messageOffset, sizeof(float));
+			messageOffset += STSIZE;
+			memcpy(&color, msg + messageOffset, sizeof(color));
+			
+			pointLight->setIntensity(intensity);
+			pointLight->setColor(color);
+		}
+	}
+}
+void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
+{
+	size_t messageOffset{};
+	size_t uuidSize{};
+	std::string uuid{};
+
+	memcpy(&uuidSize, msg, STSIZE);
+	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
+	memcpy(&uuid[0], msg + messageOffset, uuidSize);
+	messageOffset += uuidSize;
+
+	NODETYPES::Node* node{ this->findNode(uuid) };
+	if (node)
+	{
+		double matrix[4][4]{};
+		memcpy(&matrix, msg + messageOffset, sizeof(double[4][4]));
+		messageOffset += sizeof(double[4][4]);
+		
+		if (attr == ComLib::ATTRIBUTE_TYPE::MATRIX)
+		{
+			NODETYPES::Transform* transform {dynamic_cast<NODETYPES::Transform*>(node)};
+			if (transform)
+			{
+				transform->setMatrix(matrix);
+			}
+		}
+		else if (attr == ComLib::ATTRIBUTE_TYPE::PROJMATRIX)
+		{
+			NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
+			if (camera)
+			{
+				camera->setProjectionMatrix(matrix);
+			}
+		}
+	}
+
+
+}
+void DX::updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
+{
+	size_t messageOffset {};
+	size_t uuidSize {};
+	std::string uuid {};
+
+	memcpy(&uuidSize, msg, STSIZE);
+	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
+	memcpy(&uuid[0], msg + messageOffset, uuidSize);
+	messageOffset += uuidSize;
+
+	NODETYPES::Node* node { this->findNode(uuid) };
+	if (node)
+	{
+		NODETYPES::Mesh* mesh {dynamic_cast<NODETYPES::Mesh*>(node)};
+		if (mesh)
+		{
+			if (attribute == ComLib::ATTRIBUTE_TYPE::VERTEX/* ||
+				attribute == ComLib::ATTRIBUTE_TYPE::NORMAL*/)
+			{
+				int actualPos {};
+				int iteratedPos{};
+				
+				memcpy(&actualPos, msg + messageOffset, sizeof(int));
+				messageOffset += sizeof(int);
+				memcpy(&iteratedPos, msg + messageOffset, sizeof(iteratedPos));
+				messageOffset += sizeof(iteratedPos);
+			
+				std::vector<NODETYPES::Mesh::VERTEX> container {};
+				container.resize(10000);
+				memcpy(&container[0], msg + messageOffset, container.size());
+				messageOffset += container.size();
+
+				mesh->updateList(actualPos, iteratedPos, container);
+
+				//###### OLD! #########
+				//for (size_t i = 0; i < 10000; ++i)
+				//{
+				//	delete[] container[i];
+				//}
+				//delete[] container;
+				//#####################
+			}
+			else if (attribute == ComLib::ATTRIBUTE_TYPE::VERTEXID)
+			{
+				size_t actualPos{};
+				int iteratedPos{};
+				std::vector<size_t> container {};
+				container.resize(10000);
+
+				memcpy(&actualPos, msg + messageOffset, sizeof(unsigned int));
+				messageOffset += sizeof(unsigned int);
+				memcpy(&iteratedPos, msg + messageOffset, sizeof(int));
+				messageOffset += sizeof(int);
+				memcpy(&container[0], msg + messageOffset, container.size());
+				messageOffset += container.size();
+
+				mesh->updateList(actualPos, iteratedPos, container);
+
+			}
+			//###### OLD! #########
+			//else if (attribute == ComLib::ATTRIBUTE_TYPE::UV)
+			//{
+			//	auto container { new double[10000][2] };
+			//	memcpy(&container, msg + messageOffset, sizeof(container));
+			//	messageOffset += sizeof(container);
+			//
+			//	size_t setIndex{};
+			//	memcpy(&setIndex, msg + messageOffset, STSIZE);
+			//	messageOffset += STSIZE;
+			//
+			//	mesh->updateList(actualPos, iteratedPos, setIndex, container);
+			//
+			//	for (size_t i = 0; i < 10000; ++i)
+			//	{
+			//		delete[] container[i];
+			//	}
+			//	delete[] container;
+			//}
+			//#####################
+		}
+	}
+}
+void DX::updateMeshShaders(char* msg)
+{
+	size_t messageOffset	{};
+	size_t uuidSize			{};
+	std::string uuid		{};
+	
+	memcpy(&uuidSize, msg, STSIZE);
+	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
+	memcpy(&uuid[0], msg + messageOffset, uuidSize);
+	messageOffset += uuidSize;
+
+	NODETYPES::Node* node { this->findNode(uuid) };
+	if (node)
+	{
+		NODETYPES::Mesh* mesh{ dynamic_cast<NODETYPES::Mesh*>(node) };
+		if (mesh)
+		{
+			size_t shadingEngineCount {};
+			memcpy(&shadingEngineCount, msg + messageOffset, STSIZE);
+			messageOffset += STSIZE;
+
+			std::vector<NODETYPES::Node*> shadingEngines{};
+			shadingEngines.resize(shadingEngineCount);
+
+			for (size_t i = 0; i < shadingEngineCount; ++i)
+			{
+				size_t shadingEngineUuidSize {};
+				std::string shadingEngineUuid{};
+				memcpy(&shadingEngineUuidSize, msg + messageOffset, STSIZE);
+				messageOffset += STSIZE;
+				shadingEngineUuid.resize(shadingEngineUuidSize);
+				memcpy(&shadingEngineUuid[0], msg + messageOffset, shadingEngineUuidSize);
+				messageOffset += shadingEngineUuidSize;
+
+				NODETYPES::Node* shader{ this->findNode(shadingEngineUuid) };
+				if (shader)
+				{
+					shadingEngines.emplace_back(shader);
+				}
+
+				mesh->setShadingEngines(shadingEngines);
+			}
+		}
+	}
+
+}
+void DX::addShaderEngineMaterials(char* msg)
+{
+	size_t messageOffset{};
+	size_t uuidSize{};
+	std::string uuid{};
+
+	memcpy(&uuidSize, msg, STSIZE);
+	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
+	memcpy(&uuid[0], msg + messageOffset, uuidSize);
+	messageOffset += uuidSize;
+
+	NODETYPES::Node* node { this->findNode(uuid) };
+	if (node)
+	{
+		NODETYPES::ShadingEngine* shadingEngine { dynamic_cast<NODETYPES::ShadingEngine*>(node) };
+		if (shadingEngine)
+		{
+			size_t materialCount{};
+			memcpy(&materialCount, msg + messageOffset, STSIZE);
+			messageOffset += STSIZE;
+			
+			std::vector<NODETYPES::Node*> materials{};
+			materials.resize(materialCount);
+
+			for (size_t i = 0; i < materialCount; ++i)
+			{
+				size_t materialUuidSize{};
+				std::string materialUuid{};
+				
+				memcpy(&materialUuidSize, msg + messageOffset, STSIZE);
+				messageOffset += STSIZE;
+				materialUuid.resize(materialUuidSize);
+				memcpy(&materialUuid[0], msg + messageOffset, materialUuidSize);
+				messageOffset += materialUuidSize;
+
+				NODETYPES::Node* materialNode{this->findNode(materialUuid)};
+				if (materialNode)
+				{
+					materials.emplace_back(materialNode);
+				}
+			}
+			shadingEngine->setMaterials(materials);
+		}
+	}
+}
 void DX::addMaterialTextures(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 {
 	size_t messageOffset{};
@@ -22,6 +268,7 @@ void DX::addMaterialTextures(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
@@ -35,51 +282,66 @@ void DX::addMaterialTextures(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 		{
 			if (materialNode->getType() == "lambert")
 			{
-				NODETYPES::Lambert* lambert = dynamic_cast<NODETYPES::Lambert*>(materialNode);
-				std::vector<NODETYPES::Node*> textureUuids;
-				
-				lambert->setTextureConnected(textureConnected, attribute);
-
-				memcpy(&connectedTextureCount, msg + messageOffset, STSIZE);
-				messageOffset += STSIZE;
-
-				size_t textureUuidSize{};
-				std::string textureUuid{};
-				for (size_t i = 0; i < connectedTextureCount; ++i)
+				NODETYPES::Lambert* lambert{ dynamic_cast<NODETYPES::Lambert*>(materialNode) };
+				if (lambert)
 				{
-					memcpy(&textureUuidSize, msg + messageOffset, STSIZE);
-					messageOffset += STSIZE;
-					memcpy(&textureUuid[0], msg + messageOffset, textureUuidSize);
-					messageOffset += textureUuidSize;
+					lambert->setTextureConnected(textureConnected, attribute);
 
-					NODETYPES::Node* textureNode{ this->findNode(textureUuid) };
-					textureUuids.emplace_back(textureNode);
+					memcpy(&connectedTextureCount, msg + messageOffset, STSIZE);
+					messageOffset += STSIZE;
+
+					std::vector<NODETYPES::Node*> textureUuids;
+					textureUuids.resize(connectedTextureCount);
+
+					size_t textureUuidSize{};
+					std::string textureUuid{};
+					for (size_t i = 0; i < connectedTextureCount; ++i)
+					{
+						memcpy(&textureUuidSize, msg + messageOffset, STSIZE);
+						messageOffset += STSIZE;
+						textureUuid.resize(textureUuidSize);
+						memcpy(&textureUuid[0], msg + messageOffset, textureUuidSize);
+						messageOffset += textureUuidSize;
+
+						NODETYPES::Node* textureNode{ this->findNode(textureUuid) };
+						if (textureNode)
+						{
+							textureUuids.emplace_back(textureNode);
+						}
+					}
+					lambert->setTextureMaps(textureUuids, attribute);
 				}
-				lambert->setTextureMaps(textureUuids, attribute);
 			}
 			else if (materialNode->getType() == "blinn")
 			{
-				NODETYPES::Blinn* blinn = dynamic_cast<NODETYPES::Blinn*>(materialNode);
-				std::vector<NODETYPES::Node*> textureUuids;
-
-				blinn->setTextureConnected(textureConnected, attribute);
-
-				memcpy(&connectedTextureCount, msg + messageOffset, STSIZE);
-				messageOffset += STSIZE;
-
-				size_t textureUuidSize{};
-				std::string textureUuid{};
-				for (size_t i = 0; i < connectedTextureCount; ++i)
+				NODETYPES::Blinn* blinn{ dynamic_cast<NODETYPES::Blinn*>(materialNode) };
+				if (blinn)
 				{
-					memcpy(&textureUuidSize, msg + messageOffset, STSIZE);
-					messageOffset += STSIZE;
-					memcpy(&textureUuid[0], msg + messageOffset, textureUuidSize);
-					messageOffset += textureUuidSize;
+					std::vector<NODETYPES::Node*> textureUuids;
+					textureUuids.resize(connectedTextureCount);
+					blinn->setTextureConnected(textureConnected, attribute);
 
-					NODETYPES::Node* textureNode{ this->findNode(textureUuid) };
-					textureUuids.emplace_back(textureNode);
+					memcpy(&connectedTextureCount, msg + messageOffset, STSIZE);
+					messageOffset += STSIZE;
+
+					size_t textureUuidSize{};
+					std::string textureUuid{};
+					for (size_t i = 0; i < connectedTextureCount; ++i)
+					{
+						memcpy(&textureUuidSize, msg + messageOffset, STSIZE);
+						messageOffset += STSIZE;
+						textureUuid.resize(textureUuidSize);
+						memcpy(&textureUuid[0], msg + messageOffset, textureUuidSize);
+						messageOffset += textureUuidSize;
+
+						NODETYPES::Node* textureNode{ this->findNode(textureUuid) };
+						if (textureNode)
+						{
+							textureUuids.emplace_back(textureNode);
+						}
+					}
+					blinn->setTextureMaps(textureUuids, attribute);
 				}
-				blinn->setTextureMaps(textureUuids, attribute);
 			}
 		}
 	}
@@ -94,6 +356,7 @@ void DX::addMaterialChannels(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 	memcpy(&container, msg + messageOffset, sizeof(float[3]));
@@ -123,12 +386,12 @@ void DX::addMaterialChannels(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 void DX::appendBumpShader(char* msg)
 {
 	size_t		messageOffset	{};
-
 	std::string	uuid			{};
 	size_t		uuidSize		{};
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
@@ -142,6 +405,7 @@ void DX::appendBumpShader(char* msg)
 			size_t		shaderUuidSize	{};
 			memcpy(&shaderUuidSize, msg + messageOffset, STSIZE);
 			messageOffset += STSIZE;
+			shaderUuid.resize(shaderUuidSize);
 			memcpy(&shaderUuid[0], msg + messageOffset, shaderUuidSize);
 			messageOffset += shaderUuidSize;	
 
@@ -163,6 +427,7 @@ void DX::updateBump(char* msg)
 	
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
@@ -174,6 +439,7 @@ void DX::updateBump(char* msg)
 		if (textureCount)
 		{
 			std::vector<NODETYPES::Node*> textureUuids{};
+			textureUuids.resize(textureCount);
 			for (size_t i = 0; i < textureCount; ++i)
 			{
 				size_t textureUuidSize{};
@@ -181,10 +447,15 @@ void DX::updateBump(char* msg)
 
 				memcpy(&textureUuidSize, msg + messageOffset, STSIZE);
 				messageOffset += STSIZE;
+				textureUuid.resize(textureUuidSize);
 				memcpy(&textureUuid[0], msg + messageOffset, textureUuidSize);
 				messageOffset += textureUuidSize;
 
-				textureUuids.emplace_back(this->findNode(textureUuid));
+				NODETYPES::Node* textureNode{ this->findNode(textureUuid) };
+				if (textureNode)
+				{
+					textureUuids.emplace_back(this->findNode(textureUuid));
+				}
 			}
 
 			NODETYPES::Bump* bump = dynamic_cast<NODETYPES::Bump*>(node);
@@ -207,6 +478,7 @@ void DX::updateTexture(char* msg)
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 	
@@ -220,6 +492,7 @@ void DX::updateTexture(char* msg)
 		{
 			memcpy(&pathSize, msg + messageOffset, STSIZE);
 			messageOffset += STSIZE;
+			path.resize(pathSize);
 			memcpy(&path[0], msg + messageOffset, pathSize);
 			messageOffset += pathSize;
 
@@ -265,59 +538,158 @@ void DX::allocateNode(char* msg)
 
 	memcpy(&typeSize, msg, STSIZE);
 	messageOffset += STSIZE;
+	type.resize(typeSize);
 	memcpy(&type[0], msg + messageOffset, typeSize);
 	messageOffset += typeSize;
 
 	memcpy(&nameSize, msg + messageOffset, STSIZE);
 	messageOffset += STSIZE;
+	name.resize(nameSize);
 	memcpy(&name[0], msg + messageOffset, nameSize);
 	messageOffset += nameSize;
 	
 	memcpy(&uuidSize, msg + messageOffset, STSIZE);
 	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
-	if (type.c_str() == "transform") // NOTE: Change the rest
+	if (type == "transform") // NOTE: Change the rest
 	{
-		
+		NODETYPES::Transform* transform{ new NODETYPES::Transform{name, uuid, "transform"}};
+		this->pureNodes.emplace_back(transform, uuid);
+		this->transforms.emplace_back(transform);
 	}
-	else if (std::strcmp(type.c_str(), "mesh"))
+	else if (type == "mesh")
 	{
-
+		NODETYPES::Mesh* mesh{ new NODETYPES::Mesh{name, uuid, "mesh"}};
+		this->pureNodes.emplace_back(mesh, uuid);
+		this->meshes.emplace_back(mesh);
 	}
-	else if (strcmp(type.c_str(), "pointLight"))
+	else if (type == "pointLight")
 	{
-
+		NODETYPES::PointLight* pointLight{ new NODETYPES::PointLight{name, uuid, "mesh"}};
+		this->pureNodes.emplace_back(pointLight, uuid);
+		this->pointLights.emplace_back(pointLight);
 	}
-	else if (strcmp(type.c_str(), "camera"))
+	else if (type == "camera")
 	{
-
+		NODETYPES::Camera* camera{ new NODETYPES::Camera{name, uuid, "mesh"}};
+		this->pureNodes.emplace_back(camera, uuid);
+		this->cameras.emplace_back(camera);
 	}
-	else if (strcmp(type.c_str(), "blinn"))
+	else if (type == "shadingEngine")
 	{
-		NODETYPES::Blinn* blinn{ new NODETYPES::Blinn(name, uuid, "blinn")};
+		NODETYPES::ShadingEngine* shadingEngine{ new NODETYPES::ShadingEngine{name, uuid, "shadingEngine"}};
+		this->pureNodes.emplace_back(shadingEngine, uuid);
+		this->shadingEngines.emplace_back(shadingEngine);
+	}
+	else if (type == "blinn")
+	{
+		NODETYPES::Blinn* blinn{ new NODETYPES::Blinn{name, uuid, "blinn"}};
 		this->pureNodes.emplace_back(blinn, uuid);
 		this->blinns.emplace_back(blinn);
 		
 	}
-	else if (strcmp(type.c_str(), "lambert"))
+	else if (type == "lambert")
 	{
-		NODETYPES::Lambert* lambert{ new NODETYPES::Lambert(name, uuid, "lambert") };
+		NODETYPES::Lambert* lambert{ new NODETYPES::Lambert{name, uuid, "lambert"}};
 		this->pureNodes.emplace_back(lambert, uuid);
 		this->lamberts.emplace_back(lambert);
 	}
-	else if (std::strcmp(type.c_str(), "file"))
+	else if (type == "file")
 	{
-		NODETYPES::Texture* tex{ new NODETYPES::Texture(name, uuid, "texture") };
+		NODETYPES::Texture* tex{ new NODETYPES::Texture{name, uuid, "texture"}};
 		this->pureNodes.emplace_back(tex, uuid);
 		this->textures.emplace_back(tex);
 	}
-	else if (std::strcmp(type.c_str(), "bump2d"))
+	else if (type == "bump2d")
 	{
-		NODETYPES::Bump* bump{ new NODETYPES::Bump(name, uuid, "bump")};
+		NODETYPES::Bump* bump{ new NODETYPES::Bump{name, uuid, "bump"}};
 		this->pureNodes.emplace_back(bump, uuid);
 		this->bumps.emplace_back(bump);
+	}
+	else if (type == "dagNode")
+	{
+		if (name == "world")
+		{
+			NODETYPES::Transform* transform{ new NODETYPES::Transform{name, uuid, "world"} };
+			this->pureNodes.emplace_back(transform, uuid);
+			this->transforms.emplace_back(transform);
+		}
+	}
+
+}
+void DX::allocateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
+{
+	size_t messageOffset{};
+	size_t uuidSize{};
+	std::string uuid{};
+
+	memcpy(&uuidSize, msg, STSIZE);
+	messageOffset += STSIZE;
+	uuid.resize(uuidSize);
+	memcpy(&uuid[0], msg + messageOffset, uuidSize);
+	messageOffset += uuidSize;
+
+	NODETYPES::Node* node { this->findNode(uuid) };
+	if (node)
+	{
+		NODETYPES::Mesh* mesh { dynamic_cast<NODETYPES::Mesh*>(node) };
+		if (mesh)
+		{
+			if (attribute == ComLib::ATTRIBUTE_TYPE::VERTEX)
+			{
+				int count{};
+				memcpy(&count, msg + messageOffset, sizeof(int));
+				messageOffset += sizeof(int);
+
+				if (count > 0)
+				{
+					mesh->allocateList(count, this->gDevice.Get(), attribute);
+				}
+			}
+			else if (attribute == ComLib::ATTRIBUTE_TYPE::VERTEXID)
+			{
+				size_t count{};
+				memcpy(&count, msg + messageOffset, STSIZE);
+				messageOffset += STSIZE;
+
+				if (count > 0)
+				{
+					mesh->allocateList(count, this->gDevice.Get(), attribute);
+				}
+			}
+			//###### OLD! #########
+			//if (attribute == ComLib::ATTRIBUTE_TYPE::UVSET || attribute == ComLib::ATTRIBUTE_TYPE::UVID)
+			//{
+			//	size_t uvSetIndex{};
+			//	memcpy(&uvSetIndex, msg + messageOffset, STSIZE);
+			//	messageOffset += messageOffset;
+
+			//	if (attribute == ComLib::ATTRIBUTE_TYPE::UVSET)
+			//	{
+			//		size_t nameSize{};
+			//		std::string name{};
+			//		memcpy(&nameSize, msg + messageOffset, STSIZE);
+			//		messageOffset += STSIZE;
+			//		memcpy(&name[0], msg + messageOffset, nameSize);
+			//		messageOffset += nameSize;
+			//		mesh->setUVSetName(uvSetIndex, name);
+			//	}
+
+			//	NODETYPES::Mesh::UVSET* uvSet{mesh->getUVSet(uvSetIndex)};
+			//	if (uvSet)
+			//	{
+			//		mesh->allocateList(count, this->gDevice.Get(), uvSet, attribute);
+			//	}
+			//}
+			//else 
+			//{
+			//	mesh->allocateList(count, this->gDevice.Get(), attribute);
+			//}
+			//#####################
+		}
 	}
 }
 bool DX::loadingObjects()
@@ -325,30 +697,37 @@ bool DX::loadingObjects()
 	char* msg{ this->comlib->recv() };
 	char* data = msg + sizeof(ComLib::Header);
 	
-	ComLib::Header header;
-	memcpy(&header, msg, sizeof(ComLib::Header));
+	ComLib::Header* header{ reinterpret_cast<ComLib::Header*>(msg) };
 
-	switch (header.msgId)
+	switch (header->msgId)
 	{
 	case ComLib::MSG_TYPE::ALLOCATE:
-		switch (header.attrID)
+		switch (header->attrID)
 		{
 		case ComLib::ATTRIBUTE_TYPE::NODE:
 			this->allocateNode(data);
+			break;
+		case ComLib::ATTRIBUTE_TYPE::VERTEX:
+		case ComLib::ATTRIBUTE_TYPE::VERTEXID:
+		//case ComLib::ATTRIBUTE_TYPE::NORMAL:
+		//case ComLib::ATTRIBUTE_TYPE::UVSETS:
+		//case ComLib::ATTRIBUTE_TYPE::UVSET:
+		//case ComLib::ATTRIBUTE_TYPE::UVID:
+			this->allocateList(data, header->attrID);
 			break;
 		default:
 			break;
 		}
 		break;
 	case ComLib::MSG_TYPE::DEALLOCATE:
-		switch (header.attrID)
+		switch (header->attrID)
 		{
 		default:
 			break;
 		}
 		break;
 	case ComLib::MSG_TYPE::ADDVALUES:
-		switch (header.attrID)
+		switch (header->attrID)
 		{
 		case ComLib::ATTRIBUTE_TYPE::PARENT:
 			this->addParent(data);
@@ -358,8 +737,26 @@ bool DX::loadingObjects()
 		}
 		break;
 	case ComLib::MSG_TYPE::UPDATEVALUES:
-		switch (header.attrID)
+		switch (header->attrID)
 		{
+		case ComLib::ATTRIBUTE_TYPE::MATRIX:
+			this->updateMatrix(data, header->attrID);
+			break;
+		case ComLib::ATTRIBUTE_TYPE::VERTEX:
+		case ComLib::ATTRIBUTE_TYPE::VERTEXID:
+		//case ComLib::ATTRIBUTE_TYPE::NORMAL:
+		//case ComLib::ATTRIBUTE_TYPE::UV:
+			this->updateList(data, header->attrID);
+			break;
+		case ComLib::ATTRIBUTE_TYPE::MESHSHADERS:
+			this->updateMeshShaders(data);
+			break;
+		case ComLib::ATTRIBUTE_TYPE::PROJMATRIX:
+			this->updateMatrix(data, header->attrID);
+			break;
+		case ComLib::ATTRIBUTE_TYPE::POINTINTENSITY:
+			this->updatePointLight(data);
+			break;
 		case ComLib::ATTRIBUTE_TYPE::TEXPATH:
 			this->updateTexture(data);
 			break;
@@ -372,27 +769,30 @@ bool DX::loadingObjects()
 		case ComLib::ATTRIBUTE_TYPE::SHCOLOR:
 		case ComLib::ATTRIBUTE_TYPE::SHAMBIENTCOLOR:
 		case ComLib::ATTRIBUTE_TYPE::SHTRANSPARANCY:
-		case ComLib::ATTRIBUTE_TYPE::NORMALMAP:
-			this->addMaterialChannels(data, header.attrID);
+			this->addMaterialChannels(data, header->attrID);
 			break;
 		case ComLib::ATTRIBUTE_TYPE::SHCOLORMAP:
 		case ComLib::ATTRIBUTE_TYPE::SHAMBIENTCOLORMAP:
 		case ComLib::ATTRIBUTE_TYPE::SHTRANSPARANCYMAP:
-			this->addMaterialTextures(data, header.attrID);
+		case ComLib::ATTRIBUTE_TYPE::NORMALMAP:
+			this->addMaterialTextures(data, header->attrID);
+			break;
+		case ComLib::ATTRIBUTE_TYPE::SESURFACE:
+			this->addShaderEngineMaterials(data);
 			break;
 		default:
 			break;
 		}
 		break;
 	case ComLib::MSG_TYPE::REMOVEVALUES:
-		switch (header.attrID)
+		switch (header->attrID)
 		{
 		default:
 			break;
 		}
 		break;
 	case ComLib::MSG_TYPE::MESSAGE:
-		switch (header.attrID)
+		switch (header->attrID)
 		{
 		case ComLib::ATTRIBUTE_TYPE::EXEND:
 			return false;
@@ -403,21 +803,24 @@ bool DX::loadingObjects()
 	default:
 		break;
 	}
-	delete msg;
+	return false;
 }
-void DX::queryExistingData()
+bool DX::queryExistingData()
 {
+	// Make better loop
+	// Functions saved in recursive overflows heap
+
 	if (comlib->peekExistingMessage())
 	{
 		bool fetching{ 1 };
 		char* msg{ this->comlib->recv() };
 
-		ComLib::Header& header{reinterpret_cast<ComLib::Header&>(msg)};
+		ComLib::Header* header{reinterpret_cast<ComLib::Header*>(msg)};
 
-		switch (header.msgId)
+		switch (header->msgId)
 		{
 		case ComLib::MSG_TYPE::MESSAGE:
-			switch (header.attrID)
+			switch (header->attrID)
 			{
 			case ComLib::ATTRIBUTE_TYPE::EXSTART:
 				while (fetching)
@@ -430,16 +833,13 @@ void DX::queryExistingData()
 			}
 			break;
 		default:
-			delete msg;
-			queryExistingData();
+			return false;
 			break;
 		}
-
-		delete msg;
 	}
 	else
 	{
-		queryExistingData();
+		return false;
 	}
 }
 
@@ -541,9 +941,7 @@ HRESULT DX::CreatePixelShader(LPCWSTR fileName, LPCSTR entryPoint)
 	}
 }
 void DX::CreateShaders()
-{
-	HRESULT hr;
-	
+{	
 	D3D11_INPUT_ELEMENT_DESC inputDesc[] = {
 	{ "SV_POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
@@ -717,7 +1115,10 @@ void DX::OfflineCreation(HMODULE hModule, HWND* wndHandle)
 	this->CreateShaders();
 
 	//Set-up ComLib and fetch data
-	this->queryExistingData();
+	bool fetching {};
+	while (!fetching) {
+		fetching = this->queryExistingData();
+	}
 	
 
 }

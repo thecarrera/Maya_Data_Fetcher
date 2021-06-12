@@ -1,14 +1,18 @@
 #include "ComLib.h"
 #include <maya\MGlobal.h>
 
-ComLib::ComLib(const std::string& fileMapName, const size_t& buffSize) : mSize(buffSize)
+ComLib::ComLib(const std::string& fileMapName, const DWORD& buffSize) : mSize(buffSize)
 {
+	MString debugString{};
+	debugString = static_cast<unsigned int>(buffSize);
+	MGlobal::displayInfo(debugString);
+
 	this->hFileMap = CreateFileMapping(
 		INVALID_HANDLE_VALUE,
 		nullptr,
 		PAGE_READWRITE,
 		NULL,
-		mSize + sizeof(size_t) * 2,
+		buffSize + sizeof(size_t) * 2,
 		fileMapName.c_str()
 	);
 	if (!hFileMap)
@@ -57,6 +61,7 @@ ComLib::ComLib(const std::string& fileMapName, const size_t& buffSize) : mSize(b
 			std::cout << "View map couldn't be created!" << std::endl;
 			exit(-1);
 		}
+
 		this->head = reinterpret_cast<size_t*>(data);
 		this->tail = this->head + 1;
 		this->mData = reinterpret_cast<char*>(this->tail) + sizeof(size_t);
@@ -79,14 +84,14 @@ bool ComLib::isConnected()
 	return false;
 }
 
-bool ComLib::send(const void* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE attrType, const size_t length)
+bool ComLib::send(char* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE attrType, const size_t length)
 {
 	this->calcFreeMem();
 
-	int msgSize = sizeof(Header) + length;
-	int blockCount = ceil(msgSize / 64.f);
-	int pad = (blockCount * 64) - msgSize;
-	int totalBlockSize = msgSize + pad;
+	size_t msgSize = sizeof(Header) + length;
+	size_t blockCount = ceil(msgSize / 64.f);
+	size_t pad = (blockCount * 64) - msgSize;
+	size_t totalBlockSize = msgSize + pad;
 
 	if (this->freeMemSize > totalBlockSize)
 	{
@@ -98,7 +103,7 @@ bool ComLib::send(const void* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE 
 			}
 			else
 			{
-				ComLib::Header h;
+					ComLib::Header h;
 
 				h.msgLength = mSize - *this->head;
 
@@ -118,8 +123,12 @@ bool ComLib::send(const void* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE 
 			memcpy(this->mData + *this->head, &header, sizeof(Header));
 			*this->head += sizeof(Header);
 
-			memcpy(this->mData + *this->head, msg, header.msgLength);
-			this->head += header.msgLength;
+			if (header.msgLength > 0)
+			{
+
+				memcpy(this->mData + *this->head, msg, length);
+				*this->head += length + pad;
+			}
 			return true;
 		}
 	}
@@ -143,7 +152,7 @@ void ComLib::calcFreeMem()
 	}
 	else if (*this->head > *this->tail)
 	{
-		int temp1 = mSize - *this->head;
+		size_t temp1 = mSize - *this->head;
 
 		this->freeMemSize = temp1 + *this->tail;
 	}

@@ -31,11 +31,17 @@ private:
 	bool currentFrame = { false }; // currentFrame = !currentFrame
 
 	// UP-CAST <-> DOWN-CAST
-	std::vector<std::pair<NODETYPES::Node*, std::string&>> pureNodes{};
-	std::vector<std::shared_ptr<NODETYPES::Texture>> textures{};
-	std::vector<std::shared_ptr<NODETYPES::Bump>> bumps{};
-	std::vector<std::shared_ptr<NODETYPES::Lambert>> lamberts{};
-	std::vector<std::shared_ptr<NODETYPES::Blinn>> blinns{};
+	std::vector<std::pair<NODETYPES::Node*, std::string>>		pureNodes		{};
+
+	std::vector<std::shared_ptr<NODETYPES::Transform>>			transforms		{};
+	std::vector<std::shared_ptr<NODETYPES::Mesh>>				meshes			{};
+	std::vector<std::shared_ptr<NODETYPES::PointLight>>			pointLights		{};
+	std::vector<std::shared_ptr<NODETYPES::Camera>>				cameras			{};
+	std::vector<std::shared_ptr<NODETYPES::Texture>>			textures		{};
+	std::vector<std::shared_ptr<NODETYPES::Bump>>				bumps			{};
+	std::vector<std::shared_ptr<NODETYPES::Lambert>>			lamberts		{};
+	std::vector<std::shared_ptr<NODETYPES::Blinn>>				blinns			{};
+	std::vector<std::shared_ptr<NODETYPES::ShadingEngine>>		shadingEngines	{};
 
 public:
 
@@ -61,17 +67,28 @@ private:
 		return nullptr;
 	}
 
+
+
+
+	void addShaderEngineMaterials(char* msg);
 	void addMaterialTextures(char* msg, ComLib::ATTRIBUTE_TYPE attribute);
 	void addMaterialChannels(char* msg, ComLib::ATTRIBUTE_TYPE attribute);
 	void appendBumpShader(char* msg);
+
+	void updatePointLight(char* msg);
+
+	void updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attribute);
+	void updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute);
+	void updateMeshShaders(char* msg);
 	void updateBump(char* msg);
 	void updateTexture(char* msg);
 
 	void addParent(char* msg);
 	void allocateNode(char* msg);
+	void allocateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute);
 
 	bool loadingObjects();
-	void queryExistingData();
+	bool queryExistingData();
 
 	HRESULT CreateDeviceSwapchain(HWND* wndHandle);
 	HRESULT CreateDepthBuffer(int index);

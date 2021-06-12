@@ -5,7 +5,7 @@
 #include <vector>
 
 #define THREADCOUNT 2
-#define STSIZE 4
+#define STSIZE sizeof(size_t)
 
 class Mutex
 {
@@ -80,26 +80,26 @@ public:
 		SESURFACE,
 		VERTEX,
 		VERTEXID,
-		NORMAL,
-		NORMALID,
-		UVSETS,
-		UVSET,
-		UV,
-		UVID,
+		//NORMAL,
+		//NORMALID,
+		//UVSETS,
+		//UVSET,
+		//UV,
+		//UVID,
 		MESHSHADERS,
 		POINTINTENSITY
 	};
 
 	struct Header
 	{
-		MSG_TYPE msgId = MSG_TYPE::DUMMY;
-		ATTRIBUTE_TYPE attrID = ATTRIBUTE_TYPE::NONE;
-		size_t msgSeq = 0;
-		size_t msgLength = 0;
+		MSG_TYPE		msgId		{ MSG_TYPE::DUMMY };
+		ATTRIBUTE_TYPE	attrID		{ ATTRIBUTE_TYPE::NONE };
+		size_t			msgSeq		{};
+		size_t			msgLength	{};
 	};
 
 	// create a ComLib
-	ComLib(const std::string& fileMapName, const size_t& buffSize);
+	ComLib(const std::string& fileMapName, const DWORD& buffSize);
 	/* disconnect and destroy all resources */
 	~ComLib();
 
@@ -117,13 +117,13 @@ public:
 	bool peekExistingMessage();
 	void calcFreeMem();
 
-	HANDLE hFileMap;
-	char* mData;
-	bool exits = false;
-	unsigned int mSize = 0;
-	unsigned int freeMemSize = 0;
+	HANDLE hFileMap				{};
+	char* mData					{};
+	bool exits					{false};
+	size_t mSize			{};
+	size_t freeMemSize	{};
 
-	Header header;
-	size_t* head;
-	size_t* tail;
+	Header header	{};
+	size_t* head	{};
+	size_t* tail	{};
 };

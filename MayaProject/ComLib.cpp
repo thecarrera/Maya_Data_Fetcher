@@ -1,15 +1,15 @@
 #include "ComLib.h"
 
-ComLib::ComLib(const std::string& fileMapName, const size_t& buffSize) : mSize(buffSize)
+ComLib::ComLib(const std::string& fileMapName, const DWORD& buffSize) : mSize(buffSize)
 {
 	this->hFileMap = CreateFileMapping(
 		INVALID_HANDLE_VALUE,
 		nullptr,
 		PAGE_READWRITE,
 		NULL,
-		mSize + sizeof(size_t) * 2,
+		buffSize + sizeof(size_t) * 2,
 		fileMapName.c_str()
-	);
+	); 
 	if (!hFileMap)
 	{
 		//Fatal error
@@ -82,10 +82,10 @@ bool ComLib::send(const void* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE 
 {
 	this->calcFreeMem();
 
-	int msgSize = sizeof(Header) + length;
-	int blockCount = ceil(msgSize / 64.f);
-	int pad = (blockCount * 64) - msgSize;
-	int totalBlockSize = msgSize + pad;
+	size_t msgSize = sizeof(Header) + length;
+	size_t blockCount = ceil(msgSize / 64.f);
+	size_t pad = (blockCount * 64) - msgSize;
+	size_t totalBlockSize = msgSize + pad;
 
 	if (this->freeMemSize > totalBlockSize)
 	{
@@ -135,9 +135,8 @@ bool ComLib::send(const void* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE 
 
 char* ComLib::recv()
 {
-	char* msg{};
 	size_t messageLength{ reinterpret_cast<Header*>(this->mData + *this->tail)->msgLength };
-	memcpy(msg, this->mData + *this->tail, sizeof(Header) + messageLength);
+	char* msg{ this->mData + *this->tail };
 	*this->tail += sizeof(Header) + messageLength;
 	if (*this->tail == this->mSize) 
 	{
@@ -166,7 +165,7 @@ void ComLib::calcFreeMem()
 	}
 	else if (*this->head > *this->tail)
 	{
-		int temp1 = mSize - *this->head;
+		size_t temp1 = mSize - *this->head;
 
 		this->freeMemSize = temp1 + *this->tail;
 	}
