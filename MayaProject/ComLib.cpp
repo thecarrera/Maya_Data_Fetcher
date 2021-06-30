@@ -1,13 +1,13 @@
 #include "ComLib.h"
 
-ComLib::ComLib(const std::string& fileMapName, const DWORD& buffSize) : mSize(buffSize)
+ComLib::ComLib(const std::string& fileMapName, const DWORD& buffSize)
 {
 	this->hFileMap = CreateFileMapping(
 		INVALID_HANDLE_VALUE,
 		nullptr,
 		PAGE_READWRITE,
 		NULL,
-		buffSize + sizeof(size_t) * 2,
+		buffSize + sizeof(size_t) * 4,
 		fileMapName.c_str()
 	); 
 	if (!hFileMap)
@@ -35,9 +35,11 @@ ComLib::ComLib(const std::string& fileMapName, const DWORD& buffSize) : mSize(bu
 			exit(-1);
 		}
 
-		this->head = reinterpret_cast<size_t*>(data);
+		this->mSize = reinterpret_cast<size_t*>(data) + 1;
+		this->freeMemSize = this->mSize + 1;
+		this->head = this->freeMemSize + 1;
 		this->tail = this->head + 1;
-		this->mData = reinterpret_cast<char*>(this->tail) + sizeof(size_t);
+		this->mData = reinterpret_cast<char*>(this->tail + 1);
 	}
 	else
 	{
@@ -56,122 +58,81 @@ ComLib::ComLib(const std::string& fileMapName, const DWORD& buffSize) : mSize(bu
 			std::cout << "View map couldn't be created!" << std::endl;
 			exit(-1);
 		}
-		this->head = reinterpret_cast<size_t*>(data);
+		this->mSize = reinterpret_cast<size_t*>(data) + 1;
+		this->freeMemSize = this->mSize + 1;
+		this->head = this->freeMemSize + 1;
 		this->tail = this->head + 1;
-		this->mData = reinterpret_cast<char*>(this->tail) + sizeof(size_t);
+		this->mData = reinterpret_cast<char*>(this->tail + 1);
+
+		mutex.Lock();
+		*this->mSize = buffSize;
+		*this->freeMemSize = buffSize;
 		*this->head = 0;
 		*this->tail = 0;
+		mutex.Unlock();
 	}
+
+	this->connectionStatus = new Connection_Status("connection", (200ULL << 12ULL));
 }
 ComLib::~ComLib()
 {
-	UnmapViewOfFile((LPCVOID)mData);
-	CloseHandle(hFileMap);
-}
-
-bool ComLib::connect()
-{
-	return false;
-}
-bool ComLib::isConnected()
-{
-	return false;
-}
-
-bool ComLib::send(const void* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE attrType, const size_t length)
-{
-	this->calcFreeMem();
-
-	size_t msgSize = sizeof(Header) + length;
-	size_t blockCount = ceil(msgSize / 64.f);
-	size_t pad = (blockCount * 64) - msgSize;
-	size_t totalBlockSize = msgSize + pad;
-
-	if (this->freeMemSize > totalBlockSize)
+	if (this->hFileMap)
 	{
-		if (this->mSize - msgSize <= *this->head)
-		{
-			if (*this->tail == 0)
-			{
-				return send(msg, msgType, attrType, length);
-			}
-			else
-			{
-				ComLib::Header h;
-
-				h.msgLength = mSize - *this->head;
-
-				memcpy(this->mData + *this->head, &h, sizeof(Header));
-				*this->head = 0;
-
-				return send(msg, msgType, attrType, length);
-			}
-		}
-		else
-		{
-			header.msgId = msgType;
-			header.attrID = attrType;
-			header.msgSeq++;
-			header.msgLength = length + pad;
-
-			memcpy(this->mData + *this->head, &header, sizeof(Header));
-			*this->head += sizeof(Header);
-
-			memcpy(this->mData + *this->head, msg, header.msgLength);
-			this->head += header.msgLength;
-
-			if (*this->head == mSize)
-			{
-				*this->head = 0;
-			}
-			return true;
-		}
-	}
-	else
-	{
-		return false;
+		mutex.Lock();
+		delete this->connectionStatus;
+		UnmapViewOfFile((LPCVOID)mData);
+		CloseHandle(hFileMap);
+		mutex.Unlock();
 	}
 }
 
 char* ComLib::recv()
 {
-	size_t messageLength{ reinterpret_cast<Header*>(this->mData + *this->tail)->msgLength };
-	char* msg{ this->mData + *this->tail };
-	*this->tail += sizeof(Header) + messageLength;
-	if (*this->tail == this->mSize) 
+	if (this->hFileMap)
 	{
-		*this->tail = 0;
+		mutex.Lock();
+		size_t freeMemSize {*this->freeMemSize};
+		size_t memSize {*this->mSize};
+		mutex.Unlock();
+		
+		std::cout << "freeMemSize: " << freeMemSize << std::endl;
+		std::cout << "memSize: " << memSize << std::endl;
+
+		if (freeMemSize < memSize)
+		{
+			size_t messageLength {reinterpret_cast<HEADER*>(this->mData + *this->tail)->msgLength};
+			std::cout << "messageLength: " << messageLength << std::endl;
+			
+			char* msg = this->mData + *this->tail;
+			*this->tail += sizeof(HEADER) + messageLength;
+			*this->freeMemSize += sizeof(HEADER) + messageLength;
+
+			if (*this->tail == *this->mSize) 
+			{
+				*this->tail = 0;
+			}
+
+			std::cout << "New freeMemSize: " << *this->freeMemSize << std::endl;
+			std::cout << "tail: " << *this->tail << std::endl << std::endl;
+			return msg;
+		}
 	}
-	return msg;
+	return nullptr;
 }
 
 bool ComLib::peekExistingMessage()
 {
-	if (*this->head == *this->tail)
+	if (this->hFileMap)
 	{
-		return 0;
+		mutex.Lock();
+		size_t* messageCount {this->mSize - 1};
+ 		mutex.Unlock();
+		if (*messageCount > 0)
+		{
+			std::cout << "messageCount: " << *messageCount << std::endl;
+			return 1;
+		}
 	}
-	else
-	{
-		return 1;
-	}
-}
-
-void ComLib::calcFreeMem()
-{
-	if (*this->head == *this->tail)
-	{
-		this->freeMemSize = mSize;
-	}
-	else if (*this->head > *this->tail)
-	{
-		size_t temp1 = mSize - *this->head;
-
-		this->freeMemSize = temp1 + *this->tail;
-	}
-	else
-	{
-		this->freeMemSize = *this->tail - *this->head;
-	}
+	return 0;
 }
 

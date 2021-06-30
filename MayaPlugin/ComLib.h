@@ -23,7 +23,6 @@ public:
 		if (!handle)
 		{
 			printf("CreateMutex error: %d\n", GetLastError());
-			getchar();
 			exit(0);
 		}
 	}
@@ -41,6 +40,37 @@ public:
 	}
 };
 
+
+class Connection_Status
+{
+public:
+	enum class CONNECTION_TYPE
+	{
+		DUMMY,
+		CONNECTED,
+		ALIVE,
+		DISCONNECTED,
+		NOT_SENDER,
+		CONFIRMATION
+	};
+
+	Connection_Status(const std::string& fileMapName, const DWORD& buffSize);
+	~Connection_Status();
+
+	bool peekExistingMessage();
+	HRESULT checkConnection(CONNECTION_TYPE& type);
+
+	HANDLE hFileMap						{};
+	Mutex mutex							{};
+	char* mData							{};
+
+	size_t* messageCount				{};
+	size_t* mSize						{};
+	size_t* freeMemSize					{};
+	size_t* head						{};
+	size_t* tail						{};
+};
+
 class ComLib
 {
 public:
@@ -53,6 +83,7 @@ public:
 		DEALLOCATE,
 		ADDVALUES,
 		UPDATEVALUES,
+		CHANGEVALUES,
 		REMOVEVALUES,
 		UNDO,
 		REDO
@@ -62,9 +93,12 @@ public:
 	enum class ATTRIBUTE_TYPE
 	{
 		NONE,
-		EXSTART,
-		EXEND,
+		OFFSTART,
+		OFFEND,
+		ATTRST,
+		ATTREND,
 		ERR,
+		TERMINATION,
 		NODE,
 		NODENAME,
 		NODEUUID,
@@ -78,10 +112,11 @@ public:
 		SHAMBIENTCOLORMAP,
 		SHTRANSPARANCY,
 		SHTRANSPARANCYMAP,
-		NORMALMAP,
+		SHNORMALMAP,
 		BUMPSHADER,
 		BUMPTEXTURE,
 		SESURFACE,
+		FACES,
 		VERTEX,
 		VERTEXID,
 		//NORMAL,
@@ -90,45 +125,38 @@ public:
 		//UVSET,
 		//UV,
 		//UVID,
+		MESHTRANSFORMER,
 		MESHSHADERS,
 		POINTINTENSITY
 	};
-	
-	struct Header
+
+	struct HEADER
 	{
-		MSG_TYPE		msgId		{ MSG_TYPE::DUMMY };
-		ATTRIBUTE_TYPE	attrID		{ ATTRIBUTE_TYPE::NONE };
-		size_t			msgSeq		{};
-		size_t			msgLength	{};
+		MSG_TYPE		msgId			{ MSG_TYPE::DUMMY };
+		ATTRIBUTE_TYPE	attrID			{ ATTRIBUTE_TYPE::NONE };
+		size_t			msgSeq			{};
+		size_t			msgLength		{};
 	};
 
-	// create a ComLib
 	ComLib(const std::string& fileMapName, const DWORD& buffSize);
-	/* disconnect and destroy all resources */
 	~ComLib();
+	void reset();
 
-	// init and check status
-	bool connect();
-	bool isConnected();
+	bool send();
+	void addToPackage(char* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE attributeType, const size_t length);
 
-	// returns "true" if data was sent successfully.
-	// false if for any reason the data could not be sent.
-	// Remember to delete msg pointers?
-	bool send(char* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYPE attrType, const size_t length);
+	Connection_Status* connectionStatus;
+	HANDLE hFileMap						{};
+	Mutex mutex							{};
+	HEADER header						{};
+	char* mData							{};
 
-	char* recv();
+	size_t* messageCount				{};
+	size_t* mSize						{};
+	size_t* freeMemSize					{};
+	size_t* head						{};
+	size_t* tail						{};
 
-	/* return the length of the next message */
-	//bool peekExistingMessage();
-	void calcFreeMem();
-
-	HANDLE hFileMap{};
-	char* mData					{};
-	bool exits					{false};
-	size_t mSize			{};
-	size_t freeMemSize	{};
-
-	Header header	{};
-	size_t* head	{};
-	size_t* tail	{};
+	std::vector<char> package			{};
+	size_t packageSize					{};
 };

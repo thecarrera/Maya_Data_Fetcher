@@ -12,14 +12,14 @@ int WINAPI wWinMain(HMODULE hModule, HMODULE hPrevModule, LPWSTR lpCmdLine, int 
 	freopen("conout$", "w", stdout);
 	freopen("conout$", "w", stdout);
 
-	DX Dx;
+	DX dx;
 	MSG msg = { 0 };
 	HWND wndHandle = InitWindow(hModule);
 
 	if (wndHandle)
 	{
 		ShowWindow(wndHandle, nCmdShow);
-		Dx.OfflineCreation(hModule, &wndHandle);
+		dx.OfflineCreation(hModule, &wndHandle);
 
 
 		while (WM_QUIT != msg.message)
@@ -31,7 +31,7 @@ int WINAPI wWinMain(HMODULE hModule, HMODULE hPrevModule, LPWSTR lpCmdLine, int 
 			}
 			else
 			{
-				Dx.Update();
+				dx.Update();
 			}
 		}
 		DestroyWindow(wndHandle);
@@ -39,6 +39,7 @@ int WINAPI wWinMain(HMODULE hModule, HMODULE hPrevModule, LPWSTR lpCmdLine, int 
 
 	//Send Message to Plugin about termination.
 
+	dx.disconnect();
 
 	FreeConsole();
 

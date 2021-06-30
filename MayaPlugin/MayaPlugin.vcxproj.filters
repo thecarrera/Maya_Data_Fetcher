@@ -21,6 +21,9 @@
     <ClCompile Include="Plugin_Callbacks.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Connection_Status.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="maya_includes.h">

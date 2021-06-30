@@ -62,7 +62,6 @@
 //  * Check if memcpy() can be replaced with reinterpret_cast<>, send ownership to receiver, 
 //	  or implement signal system for when memory usage is finished and waiting for release.
 //	
-// * Combine callback in a queue, send buffer with combined commands each render call. Change comlib send to comlib.recordCommand(command).
 //
 // DOES NOT SUPPORT!!!
 // DOES NOT SUPPORT!!!
@@ -132,7 +131,6 @@
 
 MCallbackIdArray myCallbackArray;
 ComLib comlib("sharedFileMap", (25ULL << 23ULL)); //200MB
-ComLib connectionStatus("connection", (200ULL << 12ULL)); //100Kb
 
 //###### OLD! ######
 //void triangulateList(MIntArray Count, MIntArray& List)
@@ -177,21 +175,24 @@ ComLib connectionStatus("connection", (200ULL << 12ULL)); //100Kb
 //}
 //##################
  
-
 //General Micro Data
 void pSendActiveCamera(MFnDagNode& camDAG)
 {
-	std::string uuid = camDAG.uuid().asString().asChar();
-	size_t uuidSize = uuid.size();
-	//ComPtr<char> msg {};
-	//size_t messageSize = 0;
-	//
-	//memcpy(msg, &uuidSize, STSIZE);
-	//messageSize += STSIZE;
-	//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//messageSize += uuidSize;
-	//
-	//comlib.send(&msg, ComLib::MSG_TYPE::ACTIVECAM, ComLib::ATTRIBUTE_TYPE::NONE, messageSize);
+	std::string uuid {camDAG.uuid().asString().asChar()};
+	size_t uuidSize {uuid.size()};
+	std::vector<char> msg {};
+	size_t messageSize {};
+	
+	msg.resize(
+		STSIZE + 
+		uuidSize
+	);
+	memcpy(msg.data(), &uuidSize, STSIZE);
+	messageSize += STSIZE;
+	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+	messageSize += uuidSize;
+	
+	comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::ACTIVECAM, ComLib::ATTRIBUTE_TYPE::NONE, messageSize);
 }
 void pSendPlugData(MPlug& plug, MString ownerUuid, ComLib::ATTRIBUTE_TYPE attribute)
 {
@@ -224,14 +225,14 @@ void pSendPlugData(MPlug& plug, MString ownerUuid, ComLib::ATTRIBUTE_TYPE attrib
 		memcpy(msg.data() + messageSize, &container, sizeof(container));
 		messageSize += sizeof(container);
 
-		comlib.send(
+		comlib.addToPackage(
 			msg.data(), 
 			ComLib::MSG_TYPE::UPDATEVALUES, 
 			attribute, 
 			messageSize
 		);
 	}
-	else if (plug.asMObject().apiType() == MFn::Type::kMatrixData)
+	/*else if (plug.asMObject().apiType() == MFn::Type::kMatrixData)
 	{
 		MDataHandle dh{};
 		plug.getValue(dh);
@@ -277,30 +278,31 @@ void pSendPlugData(MPlug& plug, MString ownerUuid, ComLib::ATTRIBUTE_TYPE attrib
 		memcpy(msg.data() + messageSize, &matrix, matrixSize);
 		messageSize += matrixSize;
 
-		comlib.send(
+		comlib.addToPackage(
 			msg.data(),
 			ComLib::MSG_TYPE::UPDATEVALUES, 
 			ComLib::ATTRIBUTE_TYPE::MATRIX, 
 			messageSize
 		);
-	}
+	}*/
 }
-void pSendPlugConnections(MPlug& plug, MString ownerName, MString ownerUuid, std::string messageType)
-{
-	MPlugArray connectedPlugs;
-	plug.connectedTo(connectedPlugs, true, false);
-	for (UINT i = 0; connectedPlugs.length(); ++i)
-	{
-		MFnDagNode connectedNode(connectedPlugs[i].node());
-		//MGlobal::displayInfo(connectedNode.name());
-	}
-}
+//void pSendPlugConnections(MPlug& plug, MString ownerName, MString ownerUuid, std::string messageType)
+//{
+//	MPlugArray connectedPlugs;
+//	plug.connectedTo(connectedPlugs, true, false);
+//	for (UINT i = 0; connectedPlugs.length(); ++i)
+//	{
+//		MFnDagNode connectedNode(connectedPlugs[i].node());
+//		//MGlobal::displayInfo(connectedNode.name());
+//	}
+//}
 
 //Transform Micro Data
 void pPrintMatrix(double mat[4][4])
 {
 	MString debugString {};
-	debugString = mat[0][0];
+	debugString = "\n";
+	debugString += mat[0][0];
 	debugString += " ";
 	debugString += mat[1][0];
 	debugString += " ";
@@ -334,60 +336,148 @@ void pPrintMatrix(double mat[4][4])
 	debugString += mat[2][3];
 	debugString += " ";
 	debugString += mat[3][3];
-	debugString += "\n";
-	
+
 	MGlobal::displayInfo(debugString);
 }
+
 void pSendMatrixData(MObject& object)
 {
-	MString debugString;
-	MStatus res;
-	MFnTransform transform(object);
-	std::string uuid = transform.uuid().asString().asChar();
-	size_t uuidSize = uuid.size();
+	MString debugString {};
+	MStatus res {};
+	MFnDependencyNode node {object};
+	MFnTransform transform {object};
+	std::string uuid {node.uuid().asString().asChar()};
+	size_t uuidSize {uuid.size()};
 
-	MMatrix mat(transform.transformationMatrix());
-	double matrix[4][4] = {
-		mat.matrix[0][0],
-		mat.matrix[1][0],
-		mat.matrix[2][0],
-		mat.matrix[3][0],
+	//MGlobal::displayInfo(node.name());
 
-		mat.matrix[0][1],
-		mat.matrix[1][1],
-		mat.matrix[2][1],
-		mat.matrix[3][1],
+	MMatrix objectMat {transform.transformationMatrix()};
+	double objectMatrix[4][4] {
+		objectMat.matrix[0][0],
+		objectMat.matrix[1][0],
+		objectMat.matrix[2][0],
+		objectMat.matrix[3][0],
 
-		mat.matrix[0][2],
-		mat.matrix[1][2],
-		mat.matrix[2][2],
-		mat.matrix[3][2],
+		objectMat.matrix[0][1],
+		objectMat.matrix[1][1],
+		objectMat.matrix[2][1],
+		objectMat.matrix[3][1],
 
-		mat.matrix[0][3],
-		mat.matrix[1][3],
-		mat.matrix[2][3],
-		mat.matrix[3][3]
+		objectMat.matrix[0][2],
+		objectMat.matrix[1][2],
+		objectMat.matrix[2][2],
+		objectMat.matrix[3][2],
+
+		objectMat.matrix[0][3],
+		objectMat.matrix[1][3],
+		objectMat.matrix[2][3],
+		objectMat.matrix[3][3]
 	};
-	size_t matrixSize = sizeof(matrix);
+	size_t matrixSize {sizeof(objectMatrix)};
+	//pPrintMatrix(objectMatrix);
+	
+	MMatrix worldMat {};
+	double worldMatrix[4][4] {};
+	MFnDependencyNode parentTransformNode {transform.parent(0)};
+	if (node.name() == "world")
+	{
+		worldMat.setToIdentity();
 
-	//pPrintMatrix(matrix);
+		worldMatrix[0][0] = worldMat.matrix[0][0];
+		worldMatrix[0][1] = worldMat.matrix[1][0];
+		worldMatrix[0][2] = worldMat.matrix[2][0];
+		worldMatrix[0][3] = worldMat.matrix[3][0];
+
+		worldMatrix[1][0] = worldMat.matrix[0][1];
+		worldMatrix[1][1] = worldMat.matrix[1][1];
+		worldMatrix[1][2] = worldMat.matrix[2][1];
+		worldMatrix[1][3] = worldMat.matrix[3][1];
+
+		worldMatrix[2][0] = worldMat.matrix[0][2];
+		worldMatrix[2][1] = worldMat.matrix[1][2];
+		worldMatrix[2][2] = worldMat.matrix[2][2];
+		worldMatrix[2][3] = worldMat.matrix[3][2];
+
+		worldMatrix[3][0] = worldMat.matrix[0][3];
+		worldMatrix[3][1] = worldMat.matrix[1][3];
+		worldMatrix[3][2] = worldMat.matrix[2][3];
+		worldMatrix[3][3] = worldMat.matrix[3][3];
+	}
+	else
+	{
+		MFnTransform parentTransform {parentTransformNode.object()};
+		worldMat = objectMat.operator*(parentTransform.transformationMatrix());
+
+		worldMatrix[0][0] = worldMat.matrix[0][0];
+		worldMatrix[0][1] = worldMat.matrix[1][0];
+		worldMatrix[0][2] = worldMat.matrix[2][0];
+		worldMatrix[0][3] = worldMat.matrix[3][0];
+
+		worldMatrix[1][0] = worldMat.matrix[0][1];
+		worldMatrix[1][1] = worldMat.matrix[1][1];
+		worldMatrix[1][2] = worldMat.matrix[2][1];
+		worldMatrix[1][3] = worldMat.matrix[3][1];
+
+		worldMatrix[2][0] = worldMat.matrix[0][2];
+		worldMatrix[2][1] = worldMat.matrix[1][2];
+		worldMatrix[2][2] = worldMat.matrix[2][2];
+		worldMatrix[2][3] = worldMat.matrix[3][2];
+
+		worldMatrix[3][0] = worldMat.matrix[0][3];
+		worldMatrix[3][1] = worldMat.matrix[1][3];
+		worldMatrix[3][2] = worldMat.matrix[2][3];
+		worldMatrix[3][3] = worldMat.matrix[3][3];
+	}
+	//pPrintMatrix(worldMatrix);
+
+	// IF INHERITS, SET PARENT TO WORLD (.DAGROOT()), ELSE SET TO PARENT();
+	MPlug plug {node.findPlug("inheritsTransform",res)};
+	std::string parentUuid{};
+	size_t parentUuidSize {};
+	if (plug.asBool())
+	{
+		MFnDependencyNode parentNode {transform.parent(0)};
+		parentUuid = parentNode.uuid().asString().asChar();
+		parentUuidSize = parentUuid.size();
+		MGlobal::displayInfo(parentNode.name());
+	}
+	else
+	{
+		if (node.name() != "world")
+		{
+			MFnDependencyNode worldNode {transform.dagRoot()};
+			parentUuid = worldNode.uuid().asString().asChar();
+			parentUuidSize = parentUuid.size();
+			MGlobal::displayInfo(worldNode.name());
+		}
+	}
 
 	std::vector<char> msg {};
-	size_t messageSize{ 0 };
+	size_t messageSize {};
 	
 	msg.resize(
-		STSIZE + 
+		(STSIZE * 2) + 
 		uuidSize +
-		matrixSize
+		(matrixSize * 2) +
+		parentUuidSize
 	);
 	memcpy(msg.data(), &uuidSize, STSIZE);
 	messageSize += STSIZE;
 	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 	messageSize += uuidSize;
-	memcpy(msg.data() + messageSize, &matrix, matrixSize);
+	memcpy(msg.data() + messageSize, &objectMatrix, matrixSize);
+	messageSize += matrixSize;
+	memcpy(msg.data() + messageSize, &worldMatrix, matrixSize);
 	messageSize += matrixSize;
 	
-	comlib.send(
+	if (node.name() != "world")
+	{
+		memcpy(msg.data() + messageSize, &parentUuidSize, STSIZE);
+		messageSize += STSIZE;
+		memcpy(msg.data() + messageSize, &parentUuid[0], parentUuidSize);
+		messageSize += parentUuidSize;
+	}
+	comlib.addToPackage(
 		msg.data(), 
 		ComLib::MSG_TYPE::UPDATEVALUES, 
 		ComLib::ATTRIBUTE_TYPE::MATRIX, 
@@ -402,6 +492,10 @@ void pSendProjectionMatrix(MObject& object)
 	MFnCamera cam {object};
 	std::string uuid {cam.uuid().asString().asChar()};
 	size_t uuidSize {uuid.size()};
+
+	MFnDependencyNode viewMatrix {cam.parent(0)};
+	std::string viewUuid {viewMatrix.uuid().asString().asChar()};
+	size_t viewUuidSize {viewUuid.size()};
 
 	MMatrix projectionMat {cam.projectionMatrix().matrix};
 	double projMat[4][4] {
@@ -429,18 +523,26 @@ void pSendProjectionMatrix(MObject& object)
 	std::vector<char> msg {};
 	size_t messageSize {};
 	msg.resize(
-		STSIZE +
+		(STSIZE * 2) +
 		uuidSize +
-		sizeof(projMat)
+		sizeof(projMat) +
+		viewUuidSize
 	);
 	memcpy(msg.data(), &uuidSize, STSIZE);
 	messageSize += STSIZE;
 	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 	messageSize += uuidSize;
+
 	memcpy(msg.data() + messageSize, &projMat, sizeof(projMat));
 	messageSize += sizeof(projMat);
 
-	comlib.send(
+	memcpy(msg.data() + messageSize, &viewUuidSize, STSIZE);
+	messageSize += STSIZE;
+	memcpy(msg.data() + messageSize, &viewUuid[0], viewUuidSize);
+	messageSize += viewUuidSize;
+
+
+	comlib.addToPackage(
 		msg.data(), 
 		ComLib::MSG_TYPE::UPDATEVALUES, 
 		ComLib::ATTRIBUTE_TYPE::PROJMATRIX, 
@@ -459,7 +561,7 @@ void pSendCamData(MObject& object)
 	double nPlane = cam.nearClippingPlane();
 	double fPlane = cam.farClippingPlane();
 
-	//comlib.send(&camData, ComLib::MSG::UPDATEVALUES, ComLib::MSG_TYPE::CAMDATA, sizeof(comlib::message::camData));
+	//comlib.addToPackage(&camData, ComLib::MSG::UPDATEVALUES, ComLib::MSG_TYPE::CAMDATA, sizeof(comlib::message::camData));
 }
 
 //Mesh Micro Data
@@ -498,7 +600,7 @@ void pSendCamData(MObject& object)
 //	size_t vertexCount = vertexList.length();
 //	memcpy(msg + messageSize, &vertexCount, STSIZE);
 //	messageSize = STSIZE;
-//	comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
+//	comlib.addToPackage(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
 //	delete msg;
 //	msg = new char();
 //	messageSize = 0;
@@ -525,7 +627,7 @@ void pSendCamData(MObject& object)
 //			memcpy(msg + messageSize, container3, container3Size);
 //			messageSize += container3Size;
 //			
-//			comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
+//			comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
 //			delete msg; msg = new char();
 //			messageSize = 0;
 //			counter = -1;
@@ -546,7 +648,7 @@ void pSendCamData(MObject& object)
 //		memcpy(msg + messageSize, container3, container3Size);
 //		messageSize += container3Size;
 //		
-//		comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
+//		comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEX, messageSize);
 //		delete msg; msg = new char();
 //		messageSize = 0;
 //		counter = -1;
@@ -568,7 +670,7 @@ void pSendCamData(MObject& object)
 //	memcpy(msg + messageSize, &normalsCount, STSIZE);
 //	messageSize += STSIZE;
 //
-//	comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
+//	comlib.addToPackage(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
 //	delete msg; msg = new char();
 //	messageSize = 0;
 //
@@ -594,7 +696,7 @@ void pSendCamData(MObject& object)
 //			memcpy(msg + messageSize, container3, container3Size);
 //			messageSize += container3Size;
 //			
-//			comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
+//			comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
 //			delete msg; msg = new char();
 //			messageSize = 0;
 //			counter = -1;
@@ -615,7 +717,7 @@ void pSendCamData(MObject& object)
 //		memcpy(msg + messageSize, container3, container3Size);
 //		messageSize += container3Size;
 //		
-//		comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
+//		comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMAL, messageSize);
 //		delete msg; msg = new char();
 //		messageSize = 0;
 //		counter = -1;
@@ -644,7 +746,7 @@ void pSendCamData(MObject& object)
 //		memcpy(msg + messageSize, &uvSetsCount, STSIZE);
 //		messageSize += STSIZE;
 //
-//		comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVSETS, messageSize);
+//		comlib.addToPackage(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVSETS, messageSize);
 //		delete msg; msg = new char();
 //		messageSize = 0;
 //
@@ -671,7 +773,7 @@ void pSendCamData(MObject& object)
 //			messageSize += setNameLength;
 //			
 //
-//			comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVSET, messageSize);
+//			comlib.addToPackage(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVSET, messageSize);
 //			delete msg; msg = new char();
 //			messageSize = 0;
 //
@@ -699,7 +801,7 @@ void pSendCamData(MObject& object)
 //					memcpy(msg + messageSize, &i, STSIZE);
 //					messageSize += STSIZE;
 //					
-//					comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UV, messageSize);
+//					comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UV, messageSize);
 //					delete msg; msg = new char();
 //					messageSize = 0;
 //					counter = -1;
@@ -723,7 +825,7 @@ void pSendCamData(MObject& object)
 //				memcpy(msg + messageSize, &i, STSIZE);
 //				messageSize += STSIZE;
 //
-//				comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UV, messageSize);
+//				comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UV, messageSize);
 //				delete msg; msg = new char();
 //				messageSize = 0;
 //				counter = -1;
@@ -788,7 +890,7 @@ void pSendCamData(MObject& object)
 //			memcpy(msg + messageSize, &i, STSIZE);
 //			messageSize += STSIZE;
 //			
-//			comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
+//			comlib.addToPackage(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
 //			delete msg; msg = new char();
 //			messageSize = 0;
 //
@@ -817,7 +919,7 @@ void pSendCamData(MObject& object)
 //	//				//memcpy(msg + messageSize, container, sizeof(container));
 //	//				//messageSize += sizeof(container);
 //
-//	//				//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
+//	//				//comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
 //	//				//msg.Reset();
 //	//				//messageSize = 0;
 //					counter = -1;
@@ -843,7 +945,7 @@ void pSendCamData(MObject& object)
 //	//			//memcpy(msg + messageSize, container, sizeof(container));
 //	//			//messageSize += sizeof(container);
 //
-//	//			//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
+//	//			//comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::UVID, messageSize);
 //	//			//msg.Reset();
 //	//			//messageSize = 0;
 //				counter = -1;
@@ -870,7 +972,7 @@ void pSendCamData(MObject& object)
 //	////memcpy(msg + messageSize, &triangleListCount, STSIZE);
 //	////messageSize += STSIZE;
 //
-//	////comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
+//	////comlib.addToPackage(msg, ComLib::MSG_TYPE::ALLOCATE, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
 //	////msg.Reset();
 //	////messageSize = 0;
 //
@@ -881,7 +983,7 @@ void pSendCamData(MObject& object)
 //	////memcpy(msg + messageSize, &normalListCount, STSIZE);
 //	////messageSize += STSIZE;
 //
-//	////comlib.send(msg, ComLib::MSG_TYPE::ALLOCATE , ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
+//	////comlib.addToPackage(msg, ComLib::MSG_TYPE::ALLOCATE , ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
 //	////msg.Reset();
 //	////messageSize = 0;
 //
@@ -904,7 +1006,7 @@ void pSendCamData(MObject& object)
 //			//memcpy(msg + messageSize, container, sizeof(container));
 //			//messageSize += sizeof(container);
 //
-//			//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
+//			//comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
 //			//msg.Reset();
 //			//messageSize = 0;
 //			counter = -1;
@@ -924,7 +1026,7 @@ void pSendCamData(MObject& object)
 //		//memcpy(msg + messageSize, container, sizeof(container));
 //		//messageSize += sizeof(container);
 //
-//		//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
+//		//comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::VERTEXID, messageSize);
 //		//msg.Reset();
 //		//messageSize = 0;
 //		counter = -1;
@@ -949,7 +1051,7 @@ void pSendCamData(MObject& object)
 //			//memcpy(msg + messageSize, container, sizeof(container));
 //			//messageSize += sizeof(container);
 //
-//			//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
+//			//comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
 //			//msg.Reset();
 //			//messageSize = 0;
 //			counter = -1;
@@ -969,267 +1071,494 @@ void pSendCamData(MObject& object)
 //		//memcpy(msg + messageSize, container, sizeof(container));
 //		//messageSize += sizeof(container);
 //
-//		//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
+//		//comlib.addToPackage(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::NORMALID, messageSize);
 //		//msg.Reset();
 //		//messageSize = 0;
 //		counter = -1;
 //	}
 //	MGlobal::displayInfo("IDs done!");
 //}
+
 void pSendVertexData(MObject& object)
 {
 	MStatus res {};
 	MString debugString {};
-
 	struct VERTEX
 	{
-		double point[3]		{};
-		double normal[3]	{};
-		double uv[2]		{};
+		float point[3]	{};
+		float normal[3]	{};
+		float uv[2]		{};
 	};
-	std::vector<VERTEX> vertexList {};
-	vertexList.resize(10000);
+	std::vector<VERTEX> vertexList	{};
+	std::vector<UINT32> vertexIDs	{};
+	vertexList.resize(100);
+	vertexIDs.resize(200);
+	int counter {-1};
 
 	MFnMesh mesh{ object };
+	std::string uuid{mesh.uuid().asString().asChar()};
+	size_t uuidSize{uuid.size()};
+
 	std::vector<char> msg {};
 	size_t messageSize {};
 
 	MStringArray uvSetNames{};
 	mesh.getUVSetNames(uvSetNames);
 
-	MItMeshVertex vertexIt{ object, &res };
+	// Object-Relative vertex positions. 8 for a cube.
+	MPointArray vertexLookUpTable{};
+	mesh.getPoints(vertexLookUpTable);
+	
+	MItMeshPolygon faceIt(object, &res);
 	if (res == MS::kSuccess)
 	{
-		std::string uuid{mesh.uuid().asString().asChar()};
-		size_t uuidSize{uuid.size()};
+		//####################################################
+		//####################################################
+		//#					FACES ALLOCATION				 #
+		//####################################################
+		//####################################################
 
-		msg.resize(
-			STSIZE +
-			uuidSize + 
-			sizeof(int)
-		);
-		memcpy(msg.data(), &uuidSize, STSIZE);
-		messageSize += STSIZE;
-		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
-		messageSize += uuidSize;
-
-		int vertexCount {vertexIt.count()};
-		memcpy(msg.data() + messageSize, &vertexCount, sizeof(int));
-		messageSize += sizeof(int);
-
-		comlib.send(
-			msg.data(), 
-			ComLib::MSG_TYPE::ALLOCATE, 
-			ComLib::ATTRIBUTE_TYPE::VERTEX, 
-			messageSize
-		);
-		//DONE ##############################################################################################
-		msg.clear();
 		msg.resize(
 			STSIZE +
 			uuidSize +
-			sizeof(int) * 2 +
-			vertexList.size()
-		);
-		messageSize = 0;
-		int counter {-1};
-
-		for (; !vertexIt.isDone(); vertexIt.next())
-		{
-			++counter;
-			int index{vertexIt.index()};
-			
-			MPoint point{vertexIt.position(MSpace::kObject)};
-			
-			vertexList[counter].point[0] = point.x;
-			vertexList[counter].point[1] = point.y;
-			vertexList[counter].point[2] = point.z;
-		
-			MVector normal{};
-			vertexIt.getNormal(normal, MSpace::kObject);
-			vertexList[counter].normal[0] = normal.x;
-			vertexList[counter].normal[1] = normal.y;
-			vertexList[counter].normal[2] = normal.z;
-		
-			float2 uv{};
-			vertexIt.getUV(uv, &uvSetNames[0]);
-			vertexList[counter].uv[0] = uv[0];
-			vertexList[counter].uv[1] = uv[1];
-		
-			if (counter % 9999 == 0 && counter != 0)
-			{
-				memcpy(msg.data(), &uuidSize, STSIZE);
-				messageSize += STSIZE;
-				memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
-				messageSize += uuidSize;
-				
-				memcpy(msg.data() + messageSize, &index, sizeof(int));
-				messageSize += sizeof(int);
-				memcpy(msg.data() + messageSize, &counter, sizeof(int));
-				messageSize += sizeof(counter);
-				memcpy(msg.data() + messageSize, &vertexList[0], vertexList.size());
-				messageSize += vertexList.size();
-
-				comlib.send(
-					msg.data(), 
-					ComLib::MSG_TYPE::UPDATEVALUES, 
-					ComLib::ATTRIBUTE_TYPE::VERTEX, 
-					messageSize
-				);
-				messageSize = 0;
-				counter = -1;
-			}
-		}
-		if (counter >= 0)
-		{
-			memcpy(msg.data(), &uuidSize, STSIZE);
-			messageSize += STSIZE;
-			memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
-			messageSize += uuidSize;
-
-			memcpy(msg.data() + messageSize, &vertexCount, sizeof(int));
-			messageSize += sizeof(int);
-			memcpy(msg.data() + messageSize, &counter, sizeof(int));
-			messageSize += sizeof(int);
-			memcpy(msg.data() + messageSize, &vertexList[0], vertexList.size());
-			messageSize += vertexList.size();
-
-			comlib.send(
-				msg.data(), 
-				ComLib::MSG_TYPE::UPDATEVALUES, 
-				ComLib::ATTRIBUTE_TYPE::VERTEX, 
-				messageSize
-			);
-			messageSize = 0;
-			counter = -1;
-		}
-		
-		std::vector<size_t> vertexIDs {};
-		vertexIDs.resize(10000);
-		MIntArray triangleCount	{};
-		MIntArray triangleList	{};
-		mesh.getTriangles(triangleCount, triangleList);
-		unsigned int triangleListCount {triangleList.length()};
-		
-		msg.resize(
-			STSIZE +
-			uuidSize +
-			sizeof(unsigned int)
+			sizeof(UINT)
 		);
 		memcpy(msg.data(), &uuidSize, STSIZE);
 		messageSize += STSIZE;
 		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 		messageSize += uuidSize;
 		
-		memcpy(msg.data() + messageSize, &triangleListCount, sizeof(unsigned int));
-		messageSize += sizeof(unsigned int);
+		UINT faceCount {faceIt.count()};
+		memcpy(msg.data() + messageSize, &faceCount, sizeof(UINT));
+		messageSize += sizeof(UINT);
 		
-		comlib.send(
+		comlib.addToPackage(
 			msg.data(),
 			ComLib::MSG_TYPE::ALLOCATE,
-			ComLib::ATTRIBUTE_TYPE::VERTEXID,
+			ComLib::ATTRIBUTE_TYPE::FACES,
 			messageSize
 		);
-
+		msg.clear();
 		messageSize = 0;
-		msg.resize(
-			STSIZE +
-			uuidSize +
-			sizeof(unsigned int) +
-			sizeof(int) +
-			vertexIDs.size()
-		);
-		for (UINT i = 0; i < triangleList.length(); ++i)
+
+		for (; !faceIt.isDone(); faceIt.next())
 		{
-			counter++;
-			vertexIDs[counter] = triangleList[i];
-		
-			if (counter % 9999 == 0 && counter != 0)
+			UINT faceIndex {faceIt.index()};
+			MGlobal::displayInfo(debugString);
+
+			// Lists points and IDs from Object-Relative face triangles.
+			// Multiple copies of same points. (Refer to mesh.getPoints() list above instead to clean up duplicates.
+			// IDs are Object-Relative, shared normals and uvs -> on a cube, 1 UV/Normal vector per vertex instead of 3(per-face).
+			// See for loop below for fetching Face-Relative vertex IDs.
+			MPointArray faceVertexTriangleList			{}; // Just fluff
+			MIntArray  objectRelativeTriangleIDs		{};
+			faceIt.getTriangles(faceVertexTriangleList, objectRelativeTriangleIDs, MSpace::kObject);
+			// Length is still Face-Relative and will give correct per-face ID drawCount.
+			UINT faceIDCount {objectRelativeTriangleIDs.length()};
+
+			MPointArray facePointList					{};
+			faceIt.getPoints(facePointList);
+			UINT faceVertexCount {facePointList.length()};
+			
+			MVectorArray faceNormalArray	{};
+			faceIt.getNormals(faceNormalArray, MSpace::kObject);
+
+			MFloatArray faceUs	{};
+			MFloatArray faceVs	{};
+			faceIt.getUVs(faceUs, faceVs, &uvSetNames[0]);
+			//####################################################
+			//####################################################
+			//#					VERTEX ALLOCATION				 #
+			//####################################################
+			//####################################################
+			msg.resize(
+				STSIZE +
+				uuidSize +
+				(sizeof(UINT) * 3)
+			);
+			memcpy(msg.data(), &uuidSize, STSIZE);
+			messageSize += STSIZE;
+			memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+			messageSize += uuidSize;
+			
+			memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
+			messageSize += sizeof(UINT);
+			memcpy(msg.data() + messageSize, &faceVertexCount, sizeof(UINT));
+			messageSize += sizeof(UINT);
+			memcpy(msg.data() + messageSize, &faceIDCount, sizeof(UINT));
+			messageSize += sizeof(UINT);
+			
+			comlib.addToPackage(
+				msg.data(),
+				ComLib::MSG_TYPE::ALLOCATE,
+				ComLib::ATTRIBUTE_TYPE::VERTEX,
+				messageSize
+			);
+			msg.clear();
+			messageSize = 0;
+			
+			//###################################################
+			//###################################################
+			//#				VERTEXLIST  QUERY					# 
+			//###################################################
+			//###################################################
+
+			// Vertex List per face. 
+			// (Since Object-Relativity does not consider Face-Relative UVs/Normals.)
+			// (DX11 index buffers only allow one index list, Splitting vertex buffers still result in "draw / Object-Points")
+			// (Since drawcalls are Face-Relative, mismatch with Object-Relative points and Face-Relative UVs/Normals)
+			// Face-Relative gives more drawcalls than Object-Relative, but less than Per-Vertex drawing (If model is not triangulated).
+			// Face-Relativity allows creation of "Face Shells".
+			msg.resize(
+				STSIZE +
+				uuidSize +
+				(sizeof(UINT) * 2) +
+				sizeof(int) +
+				vertexList.size()
+			);
+			for (UINT i = 0; i < faceVertexCount; ++i)
+			{
+				counter++;
+
+				VERTEX vertex {};
+
+				vertexList[counter].point[0] = static_cast<float>(facePointList[i].x);
+				vertexList[counter].point[1] = static_cast<float>(facePointList[i].y);
+				vertexList[counter].point[2] = static_cast<float>(facePointList[i].z);
+			
+				debugString = "Vertex: (";
+				debugString += facePointList[i].x;
+				debugString += ", ";
+				debugString += facePointList[i].y;
+				debugString += ", ";
+				debugString += facePointList[i].z;
+				debugString += ")";
+				MGlobal::displayInfo(debugString);
+
+				debugString = "\tVertex: (";
+				debugString += vertexList[counter].point[0];
+				debugString += ", ";
+				debugString += vertexList[counter].point[1];
+				debugString += ", ";
+				debugString += vertexList[counter].point[2];
+				debugString += ")";
+				MGlobal::displayInfo(debugString);
+
+				vertexList[counter].normal[0] = static_cast<float>(faceNormalArray[i].x);
+				vertexList[counter].normal[1] = static_cast<float>(faceNormalArray[i].y);
+				vertexList[counter].normal[2] = static_cast<float>(faceNormalArray[i].z);
+			
+				debugString = "Normal: (";
+				debugString += faceNormalArray[i].x;
+				debugString += ", ";
+				debugString += faceNormalArray[i].y;
+				debugString += ", ";
+				debugString += faceNormalArray[i].z;
+				debugString += ")";
+				MGlobal::displayInfo(debugString);
+
+				debugString = "\tNormal: (";
+				debugString += vertexList[counter].normal[0];
+				debugString += ", ";
+				debugString += vertexList[counter].normal[1];
+				debugString += ", ";
+				debugString += vertexList[counter].normal[2];
+				debugString += ")";
+				MGlobal::displayInfo(debugString);
+
+				vertexList[counter].uv[0] = static_cast<float>(faceUs[i]);
+				vertexList[counter].uv[1] = static_cast<float>(faceVs[i]);
+			
+				debugString = "UV: (";
+				debugString += faceUs[i];
+				debugString += ", ";
+				debugString += faceVs[i];
+				debugString += ")";
+				MGlobal::displayInfo(debugString);
+
+				debugString = "\\tUV: (";
+				debugString += vertexList[counter].uv[0];
+				debugString += ", ";
+				debugString += vertexList[counter].uv[1];
+				debugString += ")\n";
+				MGlobal::displayInfo(debugString);
+
+				if (counter % 99 == 0 && counter != 0)
+				{
+					memcpy(msg.data(), &uuidSize, STSIZE);
+					messageSize += STSIZE;
+					memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+					messageSize += uuidSize;
+			
+					memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
+					messageSize += sizeof(UINT);
+					memcpy(msg.data() + messageSize, &i, sizeof(UINT));
+					messageSize += sizeof(UINT);
+					memcpy(msg.data() + messageSize, &counter, sizeof(int));
+					messageSize += sizeof(int);
+					memcpy(msg.data() + messageSize, vertexList.data(), sizeof(VERTEX) * (counter + 1));
+					messageSize += sizeof(VERTEX) * (counter + 1);
+			
+					comlib.addToPackage(
+						msg.data(),
+						ComLib::MSG_TYPE::UPDATEVALUES,
+						ComLib::ATTRIBUTE_TYPE::VERTEX,
+						messageSize
+					);
+					messageSize = 0;
+					counter = -1;
+				}
+			}
+			if (counter >= 0)
+			{
+				debugString = "counter: ";
+				debugString += static_cast<UINT>(counter);
+				MGlobal::displayInfo(debugString);
+				debugString = "MessageSize: ";
+				debugString += static_cast<UINT>(messageSize);
+				MGlobal::displayInfo(debugString);
+				
+				memcpy(msg.data(), &uuidSize, STSIZE);
+				messageSize += STSIZE;
+				memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+				messageSize += uuidSize;
+
+				debugString = "STSIZE: ";
+				debugString += static_cast<UINT>(STSIZE);
+				MGlobal::displayInfo(debugString);
+				debugString = "uuidSize: ";
+				debugString += static_cast<UINT>(uuidSize);
+				MGlobal::displayInfo(debugString);
+				
+				memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
+				messageSize += sizeof(UINT);
+				memcpy(msg.data() + messageSize, &faceVertexCount, sizeof(UINT));
+				messageSize += sizeof(UINT);
+				memcpy(msg.data() + messageSize, &counter, sizeof(int));
+				messageSize += sizeof(int);
+				
+				debugString = "UINT size: ";
+				debugString += static_cast<UINT>(sizeof(UINT));
+				MGlobal::displayInfo(debugString);
+				debugString = "int size: ";
+				debugString += static_cast<UINT>(sizeof(int));
+				MGlobal::displayInfo(debugString);
+
+				memcpy(msg.data() + messageSize, vertexList.data(), sizeof(VERTEX) * (counter + 1));
+				messageSize += sizeof(VERTEX) * (counter + 1);
+				
+				debugString = "vertex list size: ";
+				debugString += static_cast<UINT>(sizeof(UINT32) * (counter + 1));
+				MGlobal::displayInfo(debugString);
+				debugString = "New messageSize: ";
+				debugString += static_cast<UINT>(messageSize);
+				MGlobal::displayInfo(debugString);
+			
+				comlib.addToPackage(
+					msg.data(),
+					ComLib::MSG_TYPE::UPDATEVALUES,
+					ComLib::ATTRIBUTE_TYPE::VERTEX,
+					messageSize
+				);
+				msg.clear();
+				messageSize = 0;
+				counter = -1;
+			}
+
+			//###################################################
+			//###################################################
+			//#				   VERTEXIDs QUERY					#
+			//###################################################
+			//###################################################
+			
+			// Converts Object-Relative IDs to Face-Relative IDs
+			msg.resize(
+				STSIZE +
+				uuidSize +
+				(sizeof(UINT) * 2) +
+				sizeof(int) +
+				vertexIDs.size()
+			);
+			for (size_t i = 0; i < faceIDCount; ++i)
+			{
+				debugString = "ID: ";
+				debugString += objectRelativeTriangleIDs[i];
+				MGlobal::displayInfo(debugString);
+
+				for (UINT j = 0; j < faceVertexCount; ++j)
+				{
+					if (vertexLookUpTable[objectRelativeTriangleIDs[i]].x == facePointList[j].x &&
+						vertexLookUpTable[objectRelativeTriangleIDs[i]].y == facePointList[j].y &&
+						vertexLookUpTable[objectRelativeTriangleIDs[i]].z == facePointList[j].z
+						)
+					{
+						counter++;
+						vertexIDs[counter] = j;
+
+						if (counter % 199 == 0 && counter != 0)
+						{
+							memcpy(msg.data(), &uuidSize, STSIZE);
+							messageSize += STSIZE;
+							memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+							messageSize += uuidSize;
+
+							memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
+							messageSize += sizeof(UINT);
+							memcpy(msg.data() + messageSize, &i, sizeof(UINT));
+							messageSize += sizeof(UINT);
+							memcpy(msg.data() + messageSize, &counter, sizeof(int));
+							messageSize += sizeof(int);
+							memcpy(msg.data() + messageSize, vertexIDs.data(), sizeof(UINT32) * (counter + 1));
+							messageSize += sizeof(UINT32) * (counter + 1);
+
+							comlib.addToPackage(
+								msg.data(),
+								ComLib::MSG_TYPE::UPDATEVALUES,
+								ComLib::ATTRIBUTE_TYPE::VERTEXID,
+								messageSize
+							);
+							messageSize = 0;
+							counter = -1;
+						}
+					}
+				}
+			}
+			if (counter >= 0)
 			{
 				memcpy(msg.data(), &uuidSize, STSIZE);
 				messageSize += STSIZE;
 				memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 				messageSize += uuidSize;
 		
-				memcpy(msg.data() + messageSize, &i, sizeof(unsigned int));
-				messageSize += sizeof(unsigned int);
+				memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
+				messageSize += sizeof(UINT);
+				memcpy(msg.data() + messageSize, &faceIDCount, sizeof(UINT));
+				messageSize += sizeof(UINT);
 				memcpy(msg.data() + messageSize, &counter, sizeof(int));
 				messageSize += sizeof(int);
-				memcpy(msg.data() + messageSize, &vertexIDs[0], vertexIDs.size());
-				messageSize += vertexIDs.size();
+				memcpy(msg.data() + messageSize, vertexIDs.data(), sizeof(UINT32) * (counter + 1));
+				messageSize += sizeof(UINT32) * (counter + 1);
 		
-				comlib.send(
-					msg.data(), 
-					ComLib::MSG_TYPE::UPDATEVALUES, 
-					ComLib::ATTRIBUTE_TYPE::VERTEXID, 
+				comlib.addToPackage(
+					msg.data(),
+					ComLib::MSG_TYPE::UPDATEVALUES,
+					ComLib::ATTRIBUTE_TYPE::VERTEXID,
 					messageSize
 				);
 				messageSize = 0;
 				counter = -1;
 			}
-		}
-		if (counter >= 0)
-		{
-			memcpy(msg.data(), &uuidSize, STSIZE);
-			messageSize += STSIZE;
-			memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
-			messageSize += uuidSize;
-		
-			memcpy(msg.data() + messageSize, &triangleListCount, sizeof(unsigned int));
-			messageSize += sizeof(unsigned int);
-			memcpy(msg.data() + messageSize, &counter, sizeof(int));
-			messageSize += sizeof(int);
-			memcpy(msg.data() + messageSize, &vertexIDs[0], vertexIDs.size());
-			messageSize += vertexIDs.size();
-		
-			comlib.send(
-				msg.data(),
-				ComLib::MSG_TYPE::UPDATEVALUES,
-				ComLib::ATTRIBUTE_TYPE::VERTEXID,
-				messageSize
-			);
+
+			MGlobal::displayInfo("------------");
+			debugString = "face IDs size: ";
+			debugString += static_cast<UINT>(vertexIDs.size());
+			MGlobal::displayInfo(debugString);
+			for (size_t i = 0; i < vertexIDs.size(); ++i)
+			{
+				debugString = "ID: ";
+				debugString += vertexIDs[i];
+				MGlobal::displayInfo(debugString);
+			}
+			MGlobal::displayInfo("------------");
+			debugString = "facePoint size: ";
+			debugString += static_cast<UINT>(vertexList.size());
+			MGlobal::displayInfo(debugString);
+			for (size_t i = 0; i < faceVertexCount; i++)
+			{
+				debugString = static_cast<UINT>(i);
+				MGlobal::displayInfo(debugString);
+				debugString = "\tVertex: (";
+				debugString += vertexList[i].point[0];
+				debugString += ", ";
+				debugString += vertexList[i].point[1];
+				debugString += ", ";
+				debugString += vertexList[i].point[2];
+				debugString += ")";
+				MGlobal::displayInfo(debugString);
+
+				debugString = "\tNormal: (";
+				debugString += vertexList[i].normal[0];
+				debugString += ", ";
+				debugString += vertexList[i].normal[1];
+				debugString += ", ";
+				debugString += vertexList[i].normal[2];
+				debugString += ")";
+				MGlobal::displayInfo(debugString);
+
+				debugString = "\\tUV: (";
+				debugString += vertexList[i].uv[0];
+				debugString += ", ";
+				debugString += vertexList[i].uv[1];
+				debugString += ")\n";
+				MGlobal::displayInfo(debugString);
+
+			}
+			MGlobal::displayInfo("####################################################");
 		}
 	}
 	else
 	{
-		MGlobal::displayInfo("Error fetching vertex list!");
+		MGlobal::displayInfo("Error fetching face information!");
 	}
 }
 
 //Material Micro Data
 void pSendConnectedShader(MObject& object)
 {
-	MStatus res;
-	MString debugString;
-	MFnMesh mesh(object);
-	std::string uuid = mesh.uuid().asString().asChar();
-	size_t uuidSize = uuid.size();
+	MStatus res {};
+	MString debugString {};
+	MFnMesh mesh {object};
+	std::string uuid {mesh.uuid().asString().asChar()};
+	size_t uuidSize {uuid.size()};
 
-	MObjectArray shaderEngineArray;
-	MIntArray faceIndiciesArray;
+	MObjectArray shaderEngineArray {};
+	MIntArray faceIndiciesArray {};
 	mesh.getConnectedShaders(0, shaderEngineArray, faceIndiciesArray);
-	size_t shaderCount = shaderEngineArray.length();
-	//ComPtr<char> msg {};
-	//size_t messageSize = 0;
-
-	//memcpy(msg, &uuidSize, STSIZE);
-	//messageSize += STSIZE;
-	//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//messageSize += uuidSize;
-	//memcpy(msg, &shaderCount, STSIZE);
-	//messageSize += STSIZE;
-
+	size_t shaderCount {shaderEngineArray.length()};
+	
+	std::vector<std::string> shaderUuids {};
+	std::vector<size_t> shaderUuidSizes {};
+	size_t totalShaderUuidSize {};
 	for (UINT i = 0; i < shaderCount; ++i)
 	{
 		MFnDependencyNode shader(shaderEngineArray[i]);
 		std::string shaderUuid = shader.uuid().asString().asChar();
 		size_t shaderUuidSize = shaderUuid.size();
-		//memcpy(msg + messageSize, &shaderUuidSize, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &shaderUuid[0], shaderUuidSize);
-		//messageSize += shaderUuidSize;
+
+		shaderUuids.emplace_back(shaderUuid);
+		shaderUuidSizes.emplace_back(shaderUuidSize);
+		totalShaderUuidSize += shaderUuidSize;
 	}
-	//comlib.send(msg, ComLib::MSG_TYPE::UPDATEVALUES, ComLib::ATTRIBUTE_TYPE::MESHSHADERS, messageSize);
+
+	std::vector<char> msg{};
+	size_t messageSize {};
+	msg.resize(
+		(STSIZE * (shaderCount + 2)) +
+		uuidSize + 
+		totalShaderUuidSize
+	);
+
+	memcpy(msg.data(), &uuidSize, STSIZE);
+	messageSize += STSIZE;
+	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+	messageSize += uuidSize;
+	memcpy(msg.data() + messageSize, &shaderCount, STSIZE);
+	messageSize += STSIZE;
+
+	for (UINT i = 0; i < shaderCount; ++i)
+	{
+		memcpy(msg.data() + messageSize, &shaderUuidSizes[i], STSIZE);
+		messageSize += STSIZE;
+		memcpy(msg.data() + messageSize, &shaderUuids[i][0], shaderUuidSizes[i]);
+		messageSize += shaderUuidSizes[i];
+	}
+
+	comlib.addToPackage(
+		msg.data(),
+		ComLib::MSG_TYPE::UPDATEVALUES, 
+		ComLib::ATTRIBUTE_TYPE::MESHSHADERS,
+		messageSize
+	);
 }
 
 //Type Data
@@ -1280,7 +1609,7 @@ void pAllocNode(MObject& object)
 		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 		messageSize += uuidSize;
 
-		comlib.send(
+		comlib.addToPackage(
 			msg.data(),
 			ComLib::MSG_TYPE::ALLOCATE,
 			ComLib::ATTRIBUTE_TYPE::NODE,
@@ -1321,8 +1650,7 @@ void pAllocNode(MObject& object)
 		messageSize += STSIZE;
 		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 		messageSize += uuidSize;
-		MGlobal::displayInfo("#####");
-		comlib.send(
+		comlib.addToPackage(
 			msg.data(),
 			ComLib::MSG_TYPE::ALLOCATE,
 			ComLib::ATTRIBUTE_TYPE::NODE,
@@ -1335,16 +1663,16 @@ void pSendParentsData(MObject& object)
 	std::string targetUuid = dag.uuid().asString().asChar();
 	size_t targetUuidSize = targetUuid.size();
 
-	std::unique_ptr<char> msg {};
+	std::vector<char> msg {};
 	size_t messageSize = 0;
 
-	memcpy(msg.get(), &targetUuidSize, STSIZE);
+	memcpy(msg.data(), &targetUuidSize, STSIZE);
 	messageSize += STSIZE;
-	memcpy(msg.get() + messageSize, &targetUuid[0], targetUuidSize);
+	memcpy(msg.data() + messageSize, &targetUuid[0], targetUuidSize);
 	messageSize += targetUuidSize;
 
 	size_t parentCount = dag.parentCount();
-	memcpy(msg.get() + messageSize, &parentCount, STSIZE);
+	memcpy(msg.data() + messageSize, &parentCount, STSIZE);
 	messageSize += STSIZE;
 
 	for (UINT i = 0; i < parentCount; ++i)
@@ -1376,7 +1704,7 @@ void pSendParentsData(MObject& object)
 		}
 	}
 
-	//comlib.send(&msg, ComLib::MSG_TYPE::ADDVALUES, ComLib::ATTRIBUTE_TYPE::PARENT, messageSize);
+	comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::ADDVALUES, ComLib::ATTRIBUTE_TYPE::PARENT, messageSize);
 }
 
 void pSendTransformData(MObject& object)
@@ -1391,63 +1719,42 @@ void pSendMeshData(MObject& object)
 	std::string uuid {mesh.uuid().asString().asChar()};
 	size_t uuidSize {uuid.size()};
 
+	MFnDependencyNode parentNode(mesh.parent(0));
+	std::string transformUuid {parentNode.uuid().asString().asChar()};
+	size_t transformUuidSize {transformUuid.size()};
+	
+	std::vector<char> msg {};
+	size_t messageSize {};
+	msg.resize(
+		(STSIZE * 2) +
+		uuidSize +
+		transformUuidSize
+	);
+
+	memcpy(msg.data() + messageSize, &uuidSize, STSIZE);
+	messageSize += STSIZE;
+	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+	messageSize += uuidSize;
+
+	memcpy(msg.data() + messageSize, &transformUuidSize, STSIZE);
+	messageSize += STSIZE;
+	memcpy(msg.data() + messageSize, &transformUuid[0], transformUuidSize);
+	messageSize += transformUuidSize;
+
+	comlib.addToPackage(
+		msg.data(),
+		ComLib::MSG_TYPE::UPDATEVALUES,
+		ComLib::ATTRIBUTE_TYPE::MESHTRANSFORMER,
+		messageSize
+	);
+
 	// Will not be sent individually due to attribute callbacks.
 	// Look for possible solution for separation in the future.
 	pSendVertexData(object);
 	//pSendVertexData2(object);
 
-	MObjectArray shaderEngineArray;
-	MIntArray faceIndiciesArray;
-	mesh.getConnectedShaders(0, shaderEngineArray, faceIndiciesArray);
-	size_t shaderCount = shaderEngineArray.length();
-	
-	std::vector<std::string> shaderUuids {};
-	std::vector<size_t> shaderUuidSizes {};
-	size_t totalShaderUuidSize {};
 
-	for (UINT i = 0; i < shaderCount; ++i)
-	{
-		MFnDependencyNode shader(shaderEngineArray[i]);
-		std::string shaderUuid = shader.uuid().asString().asChar();
-		size_t shaderUuidSize = shaderUuid.size();
-
-		shaderUuids.emplace_back(shaderUuid);
-		shaderUuidSizes.emplace_back(shaderUuidSize);
-		totalShaderUuidSize += shaderUuidSize;
-	}
-
-	std::vector<char> msg {};
-	size_t messageSize {};
-	msg.resize(
-		(STSIZE * (shaderCount + 2)) +
-		uuidSize + 
-		totalShaderUuidSize
-	);
-
-	memcpy(msg.data(), &uuidSize, STSIZE);
-	messageSize += STSIZE;
-
-	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
-	messageSize += uuidSize;
-
-	memcpy(msg.data() + messageSize, &shaderCount, STSIZE);
-	messageSize += STSIZE;
-
-	for (UINT i = 0; i < shaderCount; ++i)
-	{
-		memcpy(msg.data() + messageSize, &shaderUuidSizes[i], STSIZE);
-		messageSize += STSIZE;
-
-		memcpy(msg.data() + messageSize, &shaderUuids[i][0], shaderUuidSizes[i]);
-		messageSize += shaderUuidSizes[i];
-	}
-
-	comlib.send(
-		msg.data(),
-		ComLib::MSG_TYPE::UPDATEVALUES, 
-		ComLib::ATTRIBUTE_TYPE::MESHSHADERS,
-		messageSize
-	);
+	pSendConnectedShader(object);
 }
 void pSendCameraData(MObject& object)
 {
@@ -1465,6 +1772,9 @@ void pSendPointLightData(MObject& object)
 	MFnPointLight pointLightNode {object};
 	std::string uuid {pointLightNode.uuid().asString().asChar()};
 	size_t uuidSize {uuid.size()};
+	MFnDependencyNode transform {pointLightNode.parent(0)};
+	std::string transformUuid {transform.uuid().asString().asChar()};
+	size_t transformUuidSize {transformUuid.size()};
 
 	debugString = pointLightNode.decayRate();
 	MGlobal::displayInfo(debugString);
@@ -1479,27 +1789,35 @@ void pSendPointLightData(MObject& object)
 	};
 	
 	msg.resize(
-		STSIZE +
+		(STSIZE * 2) +
 		uuidSize +
+		transformUuidSize + 
 		sizeof(float) +
 		sizeof(float[3])
 	);
+	
 	memcpy(msg.data(), &uuidSize, STSIZE);
 	messageSize += STSIZE;
 	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 	messageSize += uuidSize;
+	
+	memcpy(msg.data() + messageSize, &transformUuidSize, STSIZE);
+	messageSize += STSIZE;
+	memcpy(msg.data() + messageSize, &transformUuid[0], transformUuidSize);
+	messageSize += transformUuidSize;
+	
 	memcpy(msg.data() + messageSize, &intensity, sizeof(float));
 	messageSize += sizeof(float);
 	memcpy(msg.data() + messageSize, &color, sizeof(color));
 	messageSize += sizeof(color);
 	
-	comlib.send(
+	comlib.addToPackage(
 		msg.data(),
 		ComLib::MSG_TYPE::UPDATEVALUES,
 		ComLib::ATTRIBUTE_TYPE::POINTINTENSITY,
 		messageSize
 	);
-
+	MGlobal::displayInfo("7");
 }
 void pSendTextureData(MObject& object)
 {
@@ -1544,7 +1862,7 @@ void pSendTextureData(MObject& object)
 			memcpy(msg.data() + messageSize, &texturePath[0], pathSize);
 			messageSize += pathSize;
 
-			comlib.send(
+			comlib.addToPackage(
 				msg.data(), 
 				ComLib::MSG_TYPE::UPDATEVALUES, 
 				ComLib::ATTRIBUTE_TYPE::TEXPATH, 
@@ -1603,7 +1921,7 @@ void pSendBumpData(MObject& object)
 			messageSize += textureUuidSizes[i];
 		}
 
-		comlib.send(
+		comlib.addToPackage(
 			msg.data(), 
 			ComLib::MSG_TYPE::UPDATEVALUES,
 			ComLib::ATTRIBUTE_TYPE::BUMPTEXTURE,
@@ -1676,7 +1994,7 @@ void pSendMaterialData(MObject& object)
 					messageSize += textureUuidSizes[i];
 				}
 
-				comlib.send(
+				comlib.addToPackage(
 					msg.data(), 
 					ComLib::MSG_TYPE::UPDATEVALUES, 
 					ComLib::ATTRIBUTE_TYPE::SHCOLORMAP,
@@ -1745,7 +2063,7 @@ void pSendMaterialData(MObject& object)
 					messageSize += textureUuidSizes[i];
 				}
 
-				comlib.send(
+				comlib.addToPackage(
 					msg.data(), 
 					ComLib::MSG_TYPE::UPDATEVALUES, 
 					ComLib::ATTRIBUTE_TYPE::SHAMBIENTCOLORMAP, 
@@ -1813,7 +2131,7 @@ void pSendMaterialData(MObject& object)
 					messageSize += textureUuidSizes[i];
 				}
 
-				comlib.send(
+				comlib.addToPackage(
 					msg.data(), 
 					ComLib::MSG_TYPE::UPDATEVALUES, 
 					ComLib::ATTRIBUTE_TYPE::SHTRANSPARANCYMAP,
@@ -1869,7 +2187,7 @@ void pSendMaterialData(MObject& object)
 					messageSize2 += STSIZE;
 					memcpy(msg2.data() + messageSize2, &matUuid[0], matUuidSize);
 					messageSize2 += matUuidSize;
-					comlib.send(
+					comlib.addToPackage(
 						msg2.data(),
 						ComLib::MSG_TYPE::UPDATEVALUES,
 						ComLib::ATTRIBUTE_TYPE::BUMPSHADER,
@@ -1903,10 +2221,10 @@ void pSendMaterialData(MObject& object)
 					messageSize += bumpUuidSizes[i];
 				}
 
-				comlib.send(
+				comlib.addToPackage(
 					msg.data(), 
 					ComLib::MSG_TYPE::UPDATEVALUES, 
-					ComLib::ATTRIBUTE_TYPE::NORMALMAP, 
+					ComLib::ATTRIBUTE_TYPE::SHNORMALMAP, 
 					messageSize);
 			}
 			else
@@ -1968,12 +2286,11 @@ void pSendShaderGroupData(MObject& object)
 		{
 			memcpy(msg.data() + messageSize, &shaderUuidSizes[i], STSIZE);
 			messageSize += STSIZE;
-
 			memcpy(msg.data() + messageSize, &shaderUuids[i][0], shaderUuidSizes[i]);
 			messageSize += shaderUuidSizes[i];
 		}
 
-		comlib.send(
+		comlib.addToPackage(
 			msg.data(),
 			ComLib::MSG_TYPE::UPDATEVALUES,
 			ComLib::ATTRIBUTE_TYPE::SESURFACE,
@@ -2032,7 +2349,7 @@ void pNameChangeCallback(MObject& object, const MString& lastName, void* clientD
 	//memcpy(msg + messageSize, &name[0], nameSize);
 	//messageSize += nameSize;
 	//
-	//comlib.send(msg, ComLib::MSG_TYPE::RENAME, ComLib::ATTRIBUTE_TYPE::NODENAME, messageSize);
+	//comlib.addToPackage(msg, ComLib::MSG_TYPE::RENAME, ComLib::ATTRIBUTE_TYPE::NODENAME, messageSize);
 }
 void pUuidChangeCallback(MObject& object, const MUuid& lastUuid, void* clientData)
 {
@@ -2055,7 +2372,7 @@ void pUuidChangeCallback(MObject& object, const MUuid& lastUuid, void* clientDat
 	//memcpy(msg + messageSize, &uuid[0], uuidSize);
 	//messageSize += uuidSize;
 	//
-	//comlib.send(msg, ComLib::MSG_TYPE::RENAME, ComLib::ATTRIBUTE_TYPE::NODEUUID, messageSize);
+	//comlib.addToPackage(msg, ComLib::MSG_TYPE::RENAME, ComLib::ATTRIBUTE_TYPE::NODEUUID, messageSize);
 }
 
 void pAttributeAddedRemovedCallback(MNodeMessage::AttributeMessage msg, MPlug& plug, void* clientData)
@@ -2152,7 +2469,7 @@ void pAttributeChangedCallback(MNodeMessage::AttributeMessage msg, MPlug& plug, 
 				attributeName == "vertexNormal"*/
 				attributeName == "outMesh")
 			{
-				//pSendVertexData(nodeObject);
+				pSendVertexData(nodeObject);
 			}
 			break;
 		case MFn::kPointLight:
@@ -2237,27 +2554,34 @@ void pParentAddedCallback(MDagPath& child, MDagPath& parent, void* clientData)
 	MFnDagNode targetDag(child);
 	std::string targetUuid(targetDag.uuid().asString().asChar());
 	size_t targetUuidSize = targetUuid.size();
-	
+
 	MFnDagNode parentDag(parent);
 	std::string parentUuid(parentDag.uuid().asString().asChar());
 	size_t parentUuidSize = parentUuid.size();
 
 	if (targetDag.name().length() != 0 || parentDag.name().length() != 0)
 	{
-		//ComPtr<char> msg {};
-		//size_t messageSize = 0;
-		//
-		//memcpy(msg, &targetUuidSize, STSIZE);
-		//messageSize += STSIZE; 
-		//memcpy(msg + messageSize, &targetUuid[0], targetUuidSize);
-		//messageSize += targetUuidSize;
-		//
-		//memcpy(msg + messageSize, &parentUuidSize, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &parentUuid[0], parentUuidSize);
-		//messageSize += parentUuidSize;
-		//
-		//comlib.send(&msg, ComLib::MSG_TYPE::ADDVALUES, ComLib::ATTRIBUTE_TYPE::PARENT, messageSize);
+		std::vector<char> msg {};
+		size_t messageSize {};
+
+		msg.reserve(
+			(STSIZE * 2) + 
+			targetUuidSize +
+			parentUuidSize
+		);
+
+		memcpy(msg.data(), &targetUuidSize, STSIZE);
+		messageSize += STSIZE; 
+		memcpy(msg.data() + messageSize, &targetUuid[0], targetUuidSize);
+		messageSize += targetUuidSize;
+
+		memcpy(msg.data() + messageSize, &parentUuidSize, STSIZE);
+		messageSize += STSIZE;
+
+		memcpy(msg.data() + messageSize, &parentUuid[0], parentUuidSize);
+		messageSize += parentUuidSize;
+
+		comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::ADDVALUES, ComLib::ATTRIBUTE_TYPE::PARENT, messageSize);
 	}
 }
 void pParentRemovedCallback(MDagPath& child, MDagPath& parent, void* clientData)
@@ -2272,20 +2596,26 @@ void pParentRemovedCallback(MDagPath& child, MDagPath& parent, void* clientData)
 	
 	if (targetDag.name().length() != 0 || parentDag.name().length() != 0)
 	{
-		//ComPtr<char> msg {};
-		//size_t messageSize = 0;
-		//
-		//memcpy(msg, &targetUuidSize, STSIZE);
-		//messageSize += STSIZE; 
-		//memcpy(msg + messageSize, &targetUuid[0], targetUuidSize);
-		//messageSize += targetUuidSize;
-		//
-		//memcpy(msg + messageSize, &parentUuidSize, STSIZE);
-		//messageSize += STSIZE;
-		//memcpy(msg + messageSize, &parentUuid[0], parentUuidSize);
-		//messageSize += parentUuidSize;
-		//
-		//comlib.send(&msg, ComLib::MSG_TYPE::REMOVEVALUES, ComLib::ATTRIBUTE_TYPE::PARENT, messageSize);
+		std::vector<char> msg {};
+		size_t messageSize {};
+		
+		msg.resize(
+			(STSIZE * 2) +
+			targetUuidSize + 
+			parentUuidSize
+		);
+
+		memcpy(msg.data(), &targetUuidSize, STSIZE);
+		messageSize += STSIZE; 
+		memcpy(msg.data() + messageSize, &targetUuid[0], targetUuidSize);
+		messageSize += targetUuidSize;
+		
+		memcpy(msg.data() + messageSize, &parentUuidSize, STSIZE);
+		messageSize += STSIZE;
+		memcpy(msg.data() + messageSize, &parentUuid[0], parentUuidSize);
+		messageSize += parentUuidSize;
+		
+		comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::REMOVEVALUES, ComLib::ATTRIBUTE_TYPE::PARENT, messageSize);
 	}
 }
 
@@ -2340,236 +2670,180 @@ void pNodeCreationCallback(MObject& object, void* clientData)
 
 	MGlobal::displayInfo(node.typeName());
 
-	//switch (object.apiType())
-	//{
-	//case MFn::kTransform:
-	//	pAddNodeCallbacks(object);
-	//	pAllocNode(object);
-	//	pSendTransformData(object);
-	//case MFn::kMesh:
-	//	pAddNodeCallbacks(object);
-	//	pAllocNode(object);
-	//	break;
-	//case MFn::kCamera:
-	//	pAddNodeCallbacks(object);
-	//	pAllocNode(object);
-	//	pSendCameraData(object);
-	//	break;
-	//case MFn::kLight:
-	//	pAddNodeCallbacks(object);
-	//	pAllocNode(object);
-	//	break;
-	//case MFn::kShadingEngine:
-	//	pAddNodeCallbacks(object);
-	//	pAllocNode(object);
-	//	pSendShaderGroupData(object);
-	//	break;
-
-	//	// Surface Materials
-	//case MFn::kLambert:
-	//case MFn::kBlinn:
+	switch (object.apiType())
+	{
+	case MFn::kTransform:
+		pAddNodeCallbacks(object);
+		pAllocNode(object);
+		pSendTransformData(object);
+	case MFn::kMesh:
+		pAddNodeCallbacks(object);
+		pAllocNode(object);
+		break;
+	case MFn::kCamera:
+		pAddNodeCallbacks(object);
+		pAllocNode(object);
+		pSendCameraData(object);
+		break;
+	case MFn::kPointLight:
+		pAddNodeCallbacks(object);
+		pAllocNode(object);
+		break;
+	case MFn::kShadingEngine:
+		pAddNodeCallbacks(object);
+		pAllocNode(object);
+		pSendShaderGroupData(object);
+		break;
+		// Surface Materials
+	case MFn::kLambert:
+	case MFn::kBlinn:
+		pAddNodeCallbacks(object);
+		pAllocNode(object);
+		pSendMaterialData(object);
+		break;
 	//case MFn::kPhong:
 	//case MFn::kPhongExplorer:
 	//case MFn::kLayeredShader:
 	//case MFn::kRampShader:
 	//case MFn::kShadingMap:
 	//case MFn::kHairTubeShader:
-	//	pAddNodeCallbacks(object);
-	//	pAllocNode(object);
-	//	pSendMaterialData(object);
-	//	break;
-	//	////Odd Materials
-	//	//case MFn::kSurfaceShader:
-	//	//case MFn::kVolumeShader:
-	//	//	break;
-	//	//// Custom Materials (custom, StingrayPBR, DirectX
-	//	//case MFn::kPluginHardwareShader:
-	//	//case MFn::kPluginDependNode:
-	//	//	//Not yet supported
-	//	//	break;
-	//	//
-	//	//// Utils Material
-	//	//case MFn::kUseBackground:
-	//	//case MFn::kAnisotropy:
-	//	//case MFn::kEnvFogMaterial:
-	//	//case MFn::kFluid:
-	//	//case MFn::kLightFogMaterial:
-	//	//case MFn::kOceanShader:
-	//	//case MFn::kDisplacementShader:
-	//	//case MFn::kBulge:
-	//	//case MFn::kChecker:
-	//	//case MFn::kCloth:
-	//	//case MFn::kFluidTexture2D:
+		////Odd Materials
+		//case MFn::kSurfaceShader:
+		//case MFn::kVolumeShader:
+		//	break;
+		//// Custom Materials (custom, StingrayPBR, DirectX
+		//case MFn::kPluginHardwareShader:
+		//case MFn::kPluginDependNode:
+		//	//Not yet supported
+		//	break;
+		//
+		//// Utils Material
+		//case MFn::kUseBackground:
+		//case MFn::kAnisotropy:
+		//case MFn::kEnvFogMaterial:
+		//case MFn::kFluid:
+		//case MFn::kLightFogMaterial:
+		//case MFn::kOceanShader:
+		//case MFn::kDisplacementShader:
+		//case MFn::kBulge:
+		//case MFn::kChecker:
+		//case MFn::kCloth:
+		//case MFn::kFluidTexture2D:
 
-	//	//	break;
-	//case MFn::kFileTexture:
-	//	pAddNodeCallbacks(object);
-	//	pAllocNode(object);
-	//	pSendTextureData(object);
-	//	break;
-	//default:
-	//	break;
-	//}
+		//	break;
+	case MFn::kFileTexture:
+		pAddNodeCallbacks(object);
+		pAllocNode(object);
+		pSendTextureData(object);
+		break;
+	default:
+		break;
+	}
 }
 void pNodeDeleteCallback(MObject& object, void* clientData)
 {
-	MStatus res;
-	MString debugString;
-	MFnDependencyNode node(object);
-	std::string uuid = node.uuid().asString().asChar();
-	size_t uuidSize = uuid.size();
-	//ComPtr<char> msg {};
-	//size_t messageSize = 0;
-	//
-	//memcpy(msg, &uuidSize, STSIZE);
-	//messageSize += STSIZE;
-	//memcpy(msg + messageSize, &uuid[0], uuidSize);
-	//messageSize += uuidSize;
-	//
-	//comlib.send(msg, ComLib::MSG_TYPE::DEALLOCATE, ComLib::ATTRIBUTE_TYPE::NODE, messageSize);
+	MStatus res {};
+	MString debugString {};
+	MFnDependencyNode node {object};
+	std::string uuid {node.uuid().asString().asChar()};
+	size_t uuidSize {uuid.size()};
+	
+	std::vector<char> msg {};
+	size_t messageSize {};
+	
+	msg.resize(
+		STSIZE +
+		uuidSize
+	);
+
+	memcpy(msg.data(), &uuidSize, STSIZE);
+	messageSize += STSIZE;
+	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+	messageSize += uuidSize;
+	
+	comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::DEALLOCATE, ComLib::ATTRIBUTE_TYPE::NODE, messageSize);
 }
 
-void pGetChildParenting(MObject& currentObject)
-{
-	MString debugString;
-	MStatus res;
-
-	MFnDagNode currentDag(currentObject);
-
-	for (UINT i = 0; i < currentDag.childCount(); ++i)
-	{
-		MObject childObject(currentDag.child(i));
-		MFnDagNode childDAG(childObject);
-
-		switch (childObject.apiType())
-		{
-		case MFn::kTransform:
-		case MFn::kMesh:
-		case MFn::kCamera:
-		case MFn::kPointLight:
-			pSendParentsData(childObject);
-			break;
-		default:
-			break;
-		}
-
-		if (childDAG.childCount() > 0)
-		{
-			pGetChildParenting(childObject);
-		}
-	}
-
-}
-void pGetMaterialParenting()
-{
-	MStatus res;
-	MString debugString;
-
-	//get Materials | HARDCODED (fix?)
-	std::vector<MFn::Type> type =
-	{
-		MFn::kLambert,
-		MFn::kBlinn,
-		MFn::kPhong,
-		MFn::kPhongExplorer,
-		MFn::kLayeredShader,
-		//MFn::kSurfaceShader,
-		MFn::kRampShader,
-		MFn::kShadingMap,
-		//MFn::kVolumeShader,
-		MFn::kHairTubeShader,
-		//MFn::kPluginHardwareShader,
-		//MFn::kPluginDependNode
-	};
-
-	MItDependencyNodes fileIt(MFn::kFileTexture);
-	for (; !fileIt.isDone(); fileIt.next())
-	{
-		MObject textureObject(fileIt.thisNode());
-		pSendParentsData(textureObject);
-	}
-
-	//Bumps fetched through shader enigine
-
-	// Iterate through shaders
-	for (size_t i = 0; i < type.size(); ++i)
-	{
-		MItDependencyNodes shaderIt(type.at(i));
-		for (; !shaderIt.isDone(); shaderIt.next())
-		{
-			MObject shaderObject(shaderIt.thisNode());
-			pSendParentsData(shaderObject);
-		}
-	}
-
-	// Iterate through ShaderEngines(SE) (For sorting meshes and shaders, several meshes can share one shader)
-	MItDependencyNodes engineIt(MFn::kShadingEngine);
-	for (; !engineIt.isDone(); engineIt.next())
-	{
-		MObject groupObject(engineIt.thisNode());
-		MFnDependencyNode engine(groupObject);
-		// Make sure not to include SE for particles or other unecessary types (unless wanted). Filter here.
-		if (engine.name() != "initialParticleSE")
-		{
-			pAddNodeCallbacks(groupObject);
-			pAllocNode(groupObject);
-
-			pSendShaderGroupData(groupObject);
-		}
-	}
-
-}
-void pGetParentChildRelationship()
-{
-	MString debugString;
-	MStatus res;
-
-	//ComPtr<char> msg {};
-	size_t messageSize = 0;
-
-	//comlib.send(msg.Get(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::EXSTART, messageSize);
-
-	//Queries the current viewport.
-	M3dView sceneView;
-	sceneView = sceneView.active3dView();
-
-	//Queries the active cameras DagPath.
-	MDagPath camShapeDagPath;
-	sceneView.getCamera(camShapeDagPath);
-
-	//Get root node
-	MFnDagNode camDAG(camShapeDagPath.node());
-	MFnDagNode rootDAG(camDAG.dagRoot());
-
-	pGetMaterialParenting();
-
-	for (UINT i = 0; i < rootDAG.childCount(); ++i)
-	{
-		MFnDagNode rootChildDAG(rootDAG.child(i));
-		if (rootChildDAG.typeName() == "transform")
-		{
-			MObject rootChildObject(rootChildDAG.object());
-			MString rootChildName(rootChildDAG.name());
-
-			//Hard-coded. Possible automation
-			//Filter internal essencial scene objects, carefull when modifying
-			if (rootChildName != "groundPlane_transform"
-				&& rootChildName != "defaultUfeProxyParent"
-				&& rootChildName != "shaderBallCamera1"
-				&& rootChildName != "shaderBallOrthoCamera1"
-				&& rootChildName != "MayaMtlView_FillLight1"
-				&& rootChildName != "MayaMtlView_RimLight1")
-			{
-				pSendParentsData(rootChildObject);
-
-				if (rootChildDAG.childCount())
-				{
-					pGetChildParenting(rootChildObject);
-				}
-			}
-		}
-	}
-}
+//void pGetChildParenting(MObject& currentObject)
+//{
+//	MString debugString;
+//	MStatus res;
+//
+//	MFnDagNode currentDag(currentObject);
+//
+//	for (UINT i = 0; i < currentDag.childCount(); ++i)
+//	{
+//		MObject childObject(currentDag.child(i));
+//		MFnDagNode childDAG(childObject);
+//
+//		switch (childObject.apiType())
+//		{
+//		case MFn::kTransform:
+//			pSendParentsData(childObject);
+//			break;
+//		case MFn::kMesh:
+//		case MFn::kCamera:
+//		case MFn::kPointLight:
+//		default:
+//			break;
+//		}
+//
+//		if (childDAG.childCount() > 0)
+//		{
+//			pGetChildParenting(childObject);
+//		}
+//	}
+//
+//}
+//void pGetParentChildRelationship()
+//{
+//	MString debugString {};
+//	MStatus res;
+//
+//	//ComPtr<char> msg {};
+//	size_t messageSize = 0;
+//
+//	//comlib.addToPackage(msg.Get(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::EXSTART, messageSize);
+//
+//	//Queries the current viewport.
+//	M3dView sceneView;
+//	sceneView = sceneView.active3dView();
+//
+//	//Queries the active cameras DagPath.
+//	MDagPath camShapeDagPath;
+//	sceneView.getCamera(camShapeDagPath);
+//
+//	//Get root node
+//	MFnDagNode camDAG(camShapeDagPath.node());
+//	MFnDagNode rootDAG(camDAG.dagRoot());
+//
+//	for (UINT i = 0; i < rootDAG.childCount(); ++i)
+//	{
+//		MFnDagNode rootChildDAG(rootDAG.child(i));
+//		if (rootChildDAG.typeName() == "transform")
+//		{
+//			MObject rootChildObject(rootChildDAG.object());
+//			MString rootChildName(rootChildDAG.name());
+//
+//			//Hard-coded. Possible automation
+//			//Filter internal essencial scene objects, carefull when modifying
+//			if (rootChildName != "groundPlane_transform"
+//				&& rootChildName != "defaultUfeProxyParent"
+//				&& rootChildName != "shaderBallCamera1"
+//				&& rootChildName != "shaderBallOrthoCamera1"
+//				&& rootChildName != "MayaMtlView_FillLight1"
+//				&& rootChildName != "MayaMtlView_RimLight1")
+//			{
+//				pSendParentsData(rootChildObject);
+//
+//				if (rootChildDAG.childCount())
+//				{
+//					pGetChildParenting(rootChildObject);
+//				}
+//			}
+//		}
+//	}
+//}
 
 void pCreateAddCallbackChildNode(MObject& currentObject)
 {
@@ -2577,7 +2851,7 @@ void pCreateAddCallbackChildNode(MObject& currentObject)
 	MStatus res;
 
 	MFnDagNode currentDag(currentObject);
-
+	MGlobal::displayInfo("Child Added");
 	for (UINT i = 0; i < currentDag.childCount(); ++i)
 	{
 		MObject childObject(currentDag.child(i));
@@ -2586,32 +2860,27 @@ void pCreateAddCallbackChildNode(MObject& currentObject)
 		switch (childObject.apiType())
 		{
 		case MFn::kTransform:
-			//pAddNodeCallbacks(childObject);
+			pAddNodeCallbacks(childObject);
 			pAllocNode(childObject);
-			//pSendTransformData(childObject);
+			pSendTransformData(childObject);
 			break;
-
 		case MFn::kMesh:
-			//pAddNodeCallbacks(childObject);
-			//pAllocNode(childObject);
-			//pSendMeshData(childObject);
+			pAddNodeCallbacks(childObject);
+			pAllocNode(childObject);
+			pSendMeshData(childObject);
 			break;
-
 		case MFn::kCamera:
-			//pAddNodeCallbacks(childObject);
-			//pAllocNode(childObject);
-			//pSendCameraData(childObject);
+			pAddNodeCallbacks(childObject);
+			pAllocNode(childObject);
+			pSendCameraData(childObject);
 			break;
-
 		case MFn::kPointLight:
-			//pAddNodeCallbacks(childObject);
+			MGlobal::displayInfo("PointLight!");
+			pAddNodeCallbacks(childObject);
 			pAllocNode(childObject);
 			pSendPointLightData(childObject);
 			break;
-		default:
-			break;
 		}
-
 		if (childDAG.childCount() > 0)
 		{
 			pCreateAddCallbackChildNode(childObject);
@@ -2650,7 +2919,7 @@ void pGetExistingMaterials()
 		//pAddNodeCallbacks(textureObject);
 		pAllocNode(textureObject);
 		pSendTextureData(textureObject);
-	} 
+	}
 
 	//Iterate through all bump nodes (Unnecessary node atm? Maya internal system, extra step.)
 	MItDependencyNodes bumpIt(MFn::kBump);
@@ -2678,6 +2947,8 @@ void pGetExistingMaterials()
 			pSendMaterialData(shaderObject);
 		}
 	}
+
+	// NOTE: REMOVE OTHER ITERATORS AND JUST FETCH THE SHADER ENGINE, UNNECESSARY PULL PULSES
 
 	// Iterate through ShaderEngines(SE) (For sorting meshes and shaders, several meshes can share one shader)
 	MItDependencyNodes engineIt(MFn::kShadingEngine);
@@ -2707,17 +2978,20 @@ void pGetExistingScene()
 	//Queries the active cameras DagPath.
 	MDagPath camShapeDagPath;
 	sceneView.getCamera(camShapeDagPath);
-
+	
 	//Get root node
 	MFnDagNode camDAG(camShapeDagPath.node());
 	MFnDagNode rootDAG(camDAG.dagRoot());
+	MGlobal::displayInfo("ROOT successfully fetched!");
 
-	MObject	worldMatrixObject { rootDAG.object() };
-	pAllocNode(worldMatrixObject);
-	pSendTransformData(worldMatrixObject);
+	MFnDependencyNode worldMatrixNode { rootDAG.object() };
+	MObject worldObject {worldMatrixNode.object()};
+	pAllocNode(worldObject);
+	pSendTransformData(worldObject);
+	MGlobal::displayInfo("WorldMat Fetched!");
 
-	//pGetExistingMaterials();
-	//DONE
+	pGetExistingMaterials();
+	MGlobal::displayInfo("Materials Fetched!");
 	//Go through existing objects in the scene.
 	for (UINT i = 0; i < rootDAG.childCount(); ++i)
 	{
@@ -2744,7 +3018,7 @@ void pGetExistingScene()
 				//pAddNodeCallbacks(rootChildObject);
 				pAllocNode(rootChildObject);
 				pSendTransformData(rootChildObject);
-	
+				MGlobal::displayInfo("reached children!");
 				if (rootChildDAG.childCount())
 				{
 					pCreateAddCallbackChildNode(rootChildObject);
@@ -2753,7 +3027,7 @@ void pGetExistingScene()
 		}
 	}
 	
-	//pSendActiveCamera(camDAG);
+	pSendActiveCamera(camDAG);
 }
 
 void preRenderCallback(const MString& str, void* clientData)
@@ -2761,29 +3035,133 @@ void preRenderCallback(const MString& str, void* clientData)
 	//Check connection status
 	//In-case dissconnect or reconnect -Clear buffer
 	//Fetch existant objects
-}
-//Read notes: change comlib.send to storeCommand(){(void*)buffer = command}
-void renderChangeCallback(const MString& str, void* clientData)
-{
-	M3dView sceneView;
-	sceneView = sceneView.active3dView();
+	std::vector<char> msg {};
+	size_t messageSize {};
+	bool sending {};
 
-	MDagPath camShapeDagPath;
+	M3dView sceneView {sceneView.active3dView()};
+			
+	MDagPath camShapeDagPath {};
 	sceneView.getCamera(camShapeDagPath);
+	MFnDagNode camDAG {camShapeDagPath.node()};
 
-	MFnDagNode camDAG(camShapeDagPath.node());
-
-	pSendActiveCamera(camDAG);
-
-	//Send buffer comlib.send(buffer);
+	if (comlib.connectionStatus->peekExistingMessage())
+	{
+		MGlobal::displayInfo("GAY1");
+		Connection_Status::CONNECTION_TYPE connectionType {};
+		if (comlib.connectionStatus->checkConnection(connectionType) == S_OK)
+		{
+			switch (connectionType)
+			{
+			case Connection_Status::CONNECTION_TYPE::CONNECTED:
+				MGlobal::displayInfo("6.1");
+				comlib.reset();
+				comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFSTART, messageSize);
+				//#### Query all the existing data in the scene
+				pGetExistingScene();
+				//pGetParentChildRelationship();
+				comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFEND, messageSize);
+				while (sending == false)
+				{
+					MGlobal::displayInfo("Sending!");
+					sending = comlib.send();
+				}
+				comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTRST, messageSize);
+				break;
+			case Connection_Status::CONNECTION_TYPE::DISCONNECTED:
+				comlib.mutex.Lock();
+				MGlobal::displayInfo("Reached a disconnection!");
+				comlib.reset();
+				comlib.mutex.Unlock();
+				break;
+			default:
+				break;
+			}
+		}
+	}
+	else
+	{
+		MGlobal::displayInfo("6.2");
+		pSendActiveCamera(camDAG);
+		comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTREND, messageSize);
+		MGlobal::displayInfo("6.3");
+		while (sending == false)
+		{
+			MGlobal::displayInfo("sending!");
+			sending = comlib.send();
+		}
+		MGlobal::displayInfo("6.4");
+		comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTRST, messageSize);
+		MGlobal::displayInfo("6.5");
+	}
 }
+//
+//void postRenderCallback(const MString& str, void* clientData)
+//{
+//	//Check connection status
+//	//In-case dissconnect or reconnect -Clear buffer
+//	//Fetch existant objects
+//	Connection_Status::CONNECTION_TYPE connectionType{};
+//	if (SUCCEEDED(comlib.connectionStatus->checkConnection(connectionType)))
+//	{
+//		std::vector<char> msg{};
+//		size_t messageSize{};
+//		bool sending{};
+//
+//		M3dView sceneView{ sceneView.active3dView() };
+//
+//		MDagPath camShapeDagPath{};
+//		sceneView.getCamera(camShapeDagPath);
+//
+//		MFnDagNode camDAG{ camShapeDagPath.node() };
+//		MGlobal::displayInfo("6");
+//		switch (connectionType)
+//		{
+//		case Connection_Status::CONNECTION_TYPE::CONNECTED:
+//			MGlobal::displayInfo("6.1");
+//			comlib.reset();
+//			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFSTART, messageSize);
+//			//#### Query all the existing data in the scene
+//			pGetExistingScene();
+//			//pGetParentChildRelationship();
+//			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFEND, messageSize);
+//			while (sending)
+//			{
+//				sending = comlib.send();
+//			}
+//			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTRST, messageSize);
+//			break;
+//		case Connection_Status::CONNECTION_TYPE::ALIVE:
+//			MGlobal::displayInfo("6.2");
+//			pSendActiveCamera(camDAG);
+//			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTREND, messageSize);
+//			MGlobal::displayInfo("6.3");
+//			while (sending)
+//			{
+//				sending = comlib.send();
+//			}
+//			MGlobal::displayInfo("6.4");
+//			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTRST, messageSize);
+//			MGlobal::displayInfo("6.5");
+//			break;
+//		case Connection_Status::CONNECTION_TYPE::DISCONNECTED:
+//			comlib.mutex.Lock();
+//			MGlobal::displayInfo("Reached a disconnection!");
+//			comlib.reset();
+//			comlib.mutex.Unlock();
+//			break;
+//		default:
+//			break;
+//		}
+//	}
+//}
 
 EXPORT MStatus initializePlugin(MObject obj)
 {
-	MStatus res{ MS::kFailure };
+	MStatus res {MS::kFailure};
 	MString debugString {};
-	
-	MFnPlugin myPlugin(obj, "Maya plugin", "1.0", "Any", &res);
+
+	MFnPlugin myPlugin{ obj, "Maya plugin", "1.0", "Any", &res };
 	if (MFAIL(res))
 	{
 		CHECK_MSTATUS(res);
@@ -2794,54 +3172,65 @@ EXPORT MStatus initializePlugin(MObject obj)
 		MGlobal::displayInfo("Maya plugin loaded!");
 	}
 
-	//#### Query all the existing data in the scene
-	std::vector<char> msg {};
-	size_t messageSize = 0;
-	comlib.send(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::EXSTART, messageSize);
+	Connection_Status::CONNECTION_TYPE connectionType{};
+	if (SUCCEEDED(comlib.connectionStatus->checkConnection(connectionType)))
+	{
+		std::vector<char> msg {};
+		size_t messageSize {};
+
+		MGlobal::displayInfo("Switch:");
+		switch (connectionType)
+		{
+		case Connection_Status::CONNECTION_TYPE::CONNECTED:
+			comlib.reset();
+			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFSTART, messageSize);
+			//#### Query all the existing data in the scene
+			pGetExistingScene();
+			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFEND, messageSize);
+			comlib.send();
+			MGlobal::displayInfo("Sending!");
+			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTRST, messageSize);
+			MGlobal::displayInfo("Prepaired for attributes!");
+			break;
+		}
+	}
+	MCallbackId nodeAddedId{ MDGMessage::addNodeAddedCallback(
+		pNodeCreationCallback,
+		kDefaultNodeType,
+		nullptr,
+		&res) };
+	if (res == MS::kSuccess)
+	{
+		if (myCallbackArray.append(nodeAddedId) == MS::kSuccess) {};
+	}
 	
-	pGetExistingScene();
-	//pGetParentChildRelationship();
-
-	comlib.send(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::EXEND, messageSize);
-	//####
-
-	//MCallbackId nodeAddedId{ MDGMessage::addNodeAddedCallback(
-	//	pNodeCreationCallback,
-	//	kDefaultNodeType,
-	//	nullptr,
-	//	&res) };
-	//if (res == MS::kSuccess)
-	//{
-	//	if (myCallbackArray.append(nodeAddedId) == MS::kSuccess) {};
-	//}
-
-	//MCallbackId nodeRemovedId{ MDGMessage::addNodeRemovedCallback(
-	//	pNodeDeleteCallback,
-	//	kDefaultNodeType,
-	//	nullptr,
-	//	&res) };
-	//if (res == MS::kSuccess)
-	//{
-	//	if (myCallbackArray.append(nodeRemovedId) == MS::kSuccess) {};
-	//}
-
-	//MCallbackId parentAddedID{ MDagMessage::addParentAddedCallback(
-	//	pParentAddedCallback,
-	//	nullptr,
-	//	&res) };
-	//if (res == MS::kSuccess)
-	//{
-	//	if (myCallbackArray.append(parentAddedID) == MS::kSuccess) {};
-	//}
-
-	//MCallbackId parentRemovedID{ MDagMessage::addParentRemovedCallback(
-	//	pParentRemovedCallback,
-	//	nullptr,
-	//	&res) };
-	//if (res == MS::kSuccess)
-	//{
-	//	if (myCallbackArray.append(parentAddedID) == MS::kSuccess) {};
-	//}
+	MCallbackId nodeRemovedId{ MDGMessage::addNodeRemovedCallback(
+		pNodeDeleteCallback,
+		kDefaultNodeType,
+		nullptr,
+		&res) };
+	if (res == MS::kSuccess)
+	{
+		if (myCallbackArray.append(nodeRemovedId) == MS::kSuccess) {};
+	}
+	
+	MCallbackId parentAddedID{ MDagMessage::addParentAddedCallback(
+		pParentAddedCallback,
+		nullptr,
+		&res) };
+	if (res == MS::kSuccess)
+	{
+		if (myCallbackArray.append(parentAddedID) == MS::kSuccess) {};
+	}
+	
+	MCallbackId parentRemovedID{ MDagMessage::addParentRemovedCallback(
+		pParentRemovedCallback,
+		nullptr,
+		&res) };
+	if (res == MS::kSuccess)
+	{
+		if (myCallbackArray.append(parentAddedID) == MS::kSuccess) {};
+	}
 
 	//MCallbackId undoId = MEventMessage::addEventCallback(
 	//	"Undo",
@@ -2852,22 +3241,28 @@ EXPORT MStatus initializePlugin(MObject obj)
 	//{
 	//	if (myCallbackArray.append(undoId) == MS::kSuccess) {};
 	//}
-	//
 
-	//MCallbackId preRenderId{ MUiMessage::add3dViewPreRenderMsgCallback(
-	//	"modelPanel4",
-	//	preRenderCallback,
-	//	nullptr,
-	//	&res
+	MCallbackId preRenderId{ MUiMessage::add3dViewPreRenderMsgCallback(
+		"modelPanel4",
+		preRenderCallback,
+		nullptr,
+		&res
+	)};
+	if (res == MS::kSuccess)
+	{
+		if (myCallbackArray.append(preRenderId) == MS::kSuccess) {};
+	}
+
+	//MCallbackId postRenderId{ MUiMessage::add3dViewPostRenderMsgCallback(
+	//"modelPanel4",
+	//postRenderCallback,
+	//nullptr,
+	//&res
 	//)};
-	//if (res)
-
-	//MCallbackId camTranslateId{ MUiMessage::add3dViewPostRenderMsgCallback(
-	//	"modelPanel4",
-	//	renderChangeCallback,
-	//	nullptr,
-	//	&res
-	//) };
+	//if (res == MS::kSuccess)
+	//{
+	//	if (myCallbackArray.append(postRenderId) == MS::kSuccess) {};
+	//}
 
 	return res;
 }

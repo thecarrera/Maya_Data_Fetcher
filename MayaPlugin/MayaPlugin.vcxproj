@@ -122,6 +122,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ComLib.cpp" />
+    <ClCompile Include="Connection_Status.cpp" />
     <ClCompile Include="Plugin_Callbacks.cpp" />
   </ItemGroup>
   <ItemGroup>
