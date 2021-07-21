@@ -217,9 +217,9 @@ void DX::updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 				
 				std::vector<NODETYPES::Mesh::VERTEX> container {};
 				container.resize(100);
-				UINT containerSize = container.size();
-				memcpy(container.data(), msg + messageOffset, container.size());
-				messageOffset += container.size();
+				UINT containerSize = sizeof(NODETYPES::Mesh::VERTEX) * static_cast<size_t>(iteratedPos + 1);
+				memcpy(container.data(), msg + messageOffset, containerSize);
+				messageOffset += containerSize;
 
 				mesh->updateList(faceIndex, actualPos, iteratedPos, container);
 
@@ -235,10 +235,7 @@ void DX::updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 			{
 				UINT faceIndex {};
 				UINT actualPos{};
-				UINT iteratedPos{};
-
-				std::vector<UINT32> container {};
-				container.resize(200);
+				int iteratedPos{};
 
 				memcpy(&faceIndex, msg + messageOffset, UINTSIZE);
 				messageOffset += UINTSIZE;
@@ -246,8 +243,12 @@ void DX::updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 				messageOffset += UINTSIZE;
 				memcpy(&iteratedPos, msg + messageOffset, sizeof(int));
 				messageOffset += sizeof(int);
-				memcpy(&container[0], msg + messageOffset, container.size());
-				messageOffset += container.size();
+
+				std::vector<UINT32> container {};
+				container.resize(200);
+				UINT containerSize {sizeof(UINT32) * static_cast<size_t>(iteratedPos + 1)};
+				memcpy(&container[0], msg + messageOffset, containerSize);
+				messageOffset += containerSize;
 
 				mesh->updateList(faceIndex, actualPos, iteratedPos, container);
 			}
@@ -1288,9 +1289,6 @@ void DX::CreateBuffers()
 
 HRESULT DX::CreateInputLayout(D3D11_INPUT_ELEMENT_DESC inputDesc[], UINT arraySize, ID3DBlob* VS)
 {
-	size_t test1 {VS->GetBufferSize()};
-	LPVOID test2 = {VS->GetBufferPointer()};
-
 	return this->gDevice->CreateInputLayout(inputDesc, arraySize, VS->GetBufferPointer(), VS->GetBufferSize(), &this->gVertexLayout);
 }
 HRESULT DX::CreateVertexShader(LPCWSTR fileName, LPCSTR entryPoint, D3D11_INPUT_ELEMENT_DESC inputDesc[], UINT arraySize, ID3D11VertexShader*& vertexShader)
@@ -1388,6 +1386,8 @@ void DX::CreateShaders()
 	D3D11_INPUT_ELEMENT_DESC inputDesc[] = {
 	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	{ "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
 	};
 	
@@ -1396,12 +1396,12 @@ void DX::CreateShaders()
 		OutputDebugStringA("Failed to setup vertex shader!");
 		exit(-1);
 	}
-	
+	/*
 	if (FAILED(this->CreateGeometryShader(L"G-Buffer_GeometryShader.hlsl", "GS_main", *this->gGBufferGeometryShader.GetAddressOf())))
 	{
 		OutputDebugStringA("Failed to create geometry shader!");
 		exit(-1);
-	}
+	}*/
 
 	if (FAILED(this->CreatePixelShader(L"G-Buffer_PixelShader.hlsl", "PS_main", *this->gGBufferPixelShader.GetAddressOf())))
 	{
@@ -1416,15 +1416,25 @@ void DX::CreateShaders()
 	}
 }
 
+void DX::setScissorRect()
+{
+	D3D11_RECT rects[1];
+	rects[0].left = 0;
+	rects[0].right = WIDTH;
+	rects[0].top = 0;
+	rects[0].bottom = HEIGHT;
+
+	this->gDeviceContext->RSSetScissorRects(1, rects);
+}
 void DX::setViewPort()
 {
 	D3D11_VIEWPORT vp{
-	.TopLeftX = 0,
-	.TopLeftY = 0,
-	.Width = WIDTH,
-	.Height = HEIGHT,
-	.MinDepth = 0.f,
-	.MaxDepth = 1.f
+		.TopLeftX = 0,
+		.TopLeftY = 0,
+		.Width = WIDTH,
+		.Height = HEIGHT,
+		.MinDepth = 0.f,
+		.MaxDepth = 1.f
 	};
 
 	this->gDeviceContext->RSSetViewports(1, &vp);
@@ -1432,17 +1442,23 @@ void DX::setViewPort()
 
 HRESULT DX::CreateDeviceSwapchain(HWND* wndHandle)
 {
-	DXGI_SWAP_CHAIN_DESC swapDesc{};
-	swapDesc.BufferCount = 2;
-	swapDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	swapDesc.BufferDesc.Width = static_cast<UINT>(WIDTH);
-	swapDesc.BufferDesc.Height = static_cast<UINT>(HEIGHT);
-	swapDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	swapDesc.Windowed = TRUE;
-	swapDesc.OutputWindow = *wndHandle;
-	swapDesc.SampleDesc.Count = PIXELSAMPLE;
-	swapDesc.SampleDesc.Quality = 0;
+	DXGI_MODE_DESC swapModeDesc{
+		.Width {static_cast<UINT>(WIDTH)},
+		.Height {static_cast<UINT>(HEIGHT)},
+		.Format {DXGI_FORMAT_R8G8B8A8_UNORM}
+	};
+	DXGI_SAMPLE_DESC sampleDesc {
+		.Count {PIXELSAMPLE}
+	};
+	DXGI_SWAP_CHAIN_DESC swapDesc{
+		.BufferDesc {swapModeDesc},
+		.SampleDesc {sampleDesc},
+		.BufferUsage {DXGI_USAGE_RENDER_TARGET_OUTPUT},
+		.BufferCount {2},
+		.OutputWindow {*wndHandle},
+		.Windowed {TRUE},
+		.SwapEffect {DXGI_SWAP_EFFECT_FLIP_DISCARD}	
+	};
 
  return D3D11CreateDeviceAndSwapChain(
 		nullptr,
@@ -1460,30 +1476,57 @@ HRESULT DX::CreateDeviceSwapchain(HWND* wndHandle)
 }
 HRESULT DX::CreateDepthBuffer(int index)
 {
-	D3D11_TEXTURE2D_DESC depthBufferDesc {};
-	depthBufferDesc.Width = static_cast<UINT>(WIDTH);
-	depthBufferDesc.Height = static_cast<UINT>(HEIGHT);
-	depthBufferDesc.MipLevels = 1;
-	depthBufferDesc.ArraySize = 1;
-	depthBufferDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	depthBufferDesc.SampleDesc.Count = PIXELSAMPLE;
-	depthBufferDesc.SampleDesc.Quality = 0;
-	depthBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-	depthBufferDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-	depthBufferDesc.MiscFlags = 0;
+	DXGI_SAMPLE_DESC sampleDesc {
+		.Count {PIXELSAMPLE},
+	};
+	D3D11_TEXTURE2D_DESC depthBufferDesc {
+		.Width {static_cast<UINT>(WIDTH)},
+		.Height {static_cast<UINT>(HEIGHT)},
+		.MipLevels {1},
+		.ArraySize {1},
+		.Format {DXGI_FORMAT_D24_UNORM_S8_UINT},
+		.SampleDesc {sampleDesc},
+		.Usage {D3D11_USAGE_DEFAULT},
+		.BindFlags {D3D11_BIND_DEPTH_STENCIL},
+	};
 
 	return this->gDevice->CreateTexture2D(&depthBufferDesc, nullptr, &this->gDepthStencil[index]);
 }
 HRESULT DX::CreateDepthStencil(int index, ID3D11Texture2D* pBackBuffer)
 {
-	this->gSwapchain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
-
 	D3D11_DEPTH_STENCIL_VIEW_DESC descDSV {
-		.Format {DXGI_FORMAT_D32_FLOAT},
-		.ViewDimension {D3D11_DSV_DIMENSION_TEXTURE2D},
+		.Format {DXGI_FORMAT_D24_UNORM_S8_UINT},
+		.ViewDimension {D3D11_DSV_DIMENSION_TEXTURE2D}
 	};
 
-	return this->gDevice->CreateDepthStencilView(this->gDepthStencil[index].Get(), nullptr, &this->gDepthStencilView[index]);
+	return this->gDevice->CreateDepthStencilView(this->gDepthStencil[index].Get(), &descDSV, &this->gDepthStencilView[index]);
+}
+HRESULT DX::CreateDepthStencilState()
+{
+	D3D11_DEPTH_STENCILOP_DESC dsFrontFaceOPDesc {
+		.StencilFailOp {D3D11_STENCIL_OP_KEEP},
+		.StencilDepthFailOp {D3D11_STENCIL_OP_INCR},
+		.StencilPassOp {D3D11_STENCIL_OP_KEEP},
+		.StencilFunc {D3D11_COMPARISON_ALWAYS}
+	};
+	D3D11_DEPTH_STENCILOP_DESC dsBackFaceOPDesc{
+		.StencilFailOp {D3D11_STENCIL_OP_KEEP},
+		.StencilDepthFailOp {D3D11_STENCIL_OP_DECR},
+		.StencilPassOp {D3D11_STENCIL_OP_KEEP},
+		.StencilFunc {D3D11_COMPARISON_ALWAYS}
+	};
+	D3D11_DEPTH_STENCIL_DESC dsStateDesc {
+		.DepthEnable {true},
+		.DepthWriteMask {D3D11_DEPTH_WRITE_MASK_ALL},
+		.DepthFunc {D3D11_COMPARISON_LESS},
+		.StencilEnable {true},
+		.StencilReadMask {0xFF}, // 0xFF == 250 + 5 (255)
+		.StencilWriteMask {0xFF},
+		.FrontFace {dsFrontFaceOPDesc},
+		.BackFace {dsBackFaceOPDesc}
+	};
+
+	return this->gDevice->CreateDepthStencilState(&dsStateDesc, this->gDepthStencilState.GetAddressOf());
 }
 HRESULT DX::CreateGBufferResources()
 {
@@ -1531,24 +1574,22 @@ HRESULT DX::CreateRasterizerState()
 {
 	D3D11_RASTERIZER_DESC rasDesc{
 		.FillMode {D3D11_FILL_SOLID},
-		.CullMode = {D3D11_CULL_BACK},
+		.CullMode = {D3D11_CULL_NONE},
 		.FrontCounterClockwise {},
 		.DepthBias {},
 		.DepthBiasClamp {},
 		.SlopeScaledDepthBias {},
 		.DepthClipEnable {true},
-		.ScissorEnable {},
+		.ScissorEnable {true},
 		.MultisampleEnable {},
 		.AntialiasedLineEnable {}
 	};
-
 	return this->gDevice->CreateRasterizerState(&rasDesc, this->gRasterizerState.GetAddressOf());
 }
 void DX::CreateDirect3DContext(HWND* wndHandle)
 {
 	HRESULT hr {};
 	CoInitialize(nullptr);
-
 
 	if (SUCCEEDED(this->CreateDeviceSwapchain(wndHandle)))
 	{
@@ -1579,8 +1620,13 @@ void DX::CreateDirect3DContext(HWND* wndHandle)
 				exit(-1);
 			}
 		}
-		this->gDeviceContext->OMSetRenderTargets(1, this->gBackbufferRTV[0].GetAddressOf(), this->gDepthStencilView[0].Get());
 		
+		//if (FAILED(this->CreateDepthStencilState()))
+		//{
+		//	OutputDebugStringA("Failed to create depth stencil state!");
+		//	exit(-1);
+		//}
+
 		if (FAILED(this->CreateGBufferResources()))
 		{
 			OutputDebugStringA("Failed to create G-Buffer resources!");
@@ -1600,6 +1646,8 @@ void DX::CreateDirect3DContext(HWND* wndHandle)
 		OutputDebugStringA("Failed to create raster state!");
 		exit(-1);
 	}
+
+
 }
 
 void DX::OfflineCreation(HMODULE hModule, HWND* wndHandle)
@@ -1607,6 +1655,7 @@ void DX::OfflineCreation(HMODULE hModule, HWND* wndHandle)
 	//send connected (default 1 in ComLib, changed to 0 when crash)
 	this->CreateDirect3DContext(wndHandle);
 	this->setViewPort();
+	this->setScissorRect();
 	this->CreateShaders();
 	this->CreateBuffers();
 	this->CreateSamplerStates();
@@ -1649,8 +1698,8 @@ void DX::Update()
 						while (FAILED(fetching))
 						{
 							fetching = loadingObjects();
-							this->Render();
 						}
+						this->Render();
 						break;
 					}
 					break;
@@ -1803,9 +1852,10 @@ void DX::UpdateCameraBuffers()
 void DX::RenderGBuffer()
 {
 	this->gDeviceContext->OMSetRenderTargets(3, this->gGBufferRTVs->GetAddressOf(), this->gDepthStencilView[this->currentFrame].Get());
+	//this->gDeviceContext->OMSetDepthStencilState(this->gDepthStencilState.Get(), 1);
 
 	this->gDeviceContext->VSSetShader(this->gGBufferVertexShader.Get(), nullptr, 0);
-	this->gDeviceContext->GSSetShader(this->gGBufferGeometryShader.Get(), nullptr, 0);
+	//this->gDeviceContext->GSSetShader(this->gGBufferGeometryShader.Get(), nullptr, 0);
 	this->gDeviceContext->PSSetShader(this->gGBufferPixelShader.Get(), nullptr, 0);
 	
 	this->gDeviceContext->PSSetSamplers(0, 1, this->txSamplerState.GetAddressOf());
@@ -1817,9 +1867,9 @@ void DX::RenderGBuffer()
 		this->UpdateTransformBuffer(i);
 		this->updateGBufferShaders(i);
 		
-		this->gDeviceContext->GSSetConstantBuffers(0, 1, this->cameraBuffer[0].GetAddressOf());
-		this->gDeviceContext->GSSetConstantBuffers(1, 1, this->cameraBuffer[1].GetAddressOf());
-		this->gDeviceContext->GSSetConstantBuffers(2, 1, this->transformBuffer.GetAddressOf());
+		this->gDeviceContext->VSSetConstantBuffers(0, 1, this->cameraBuffer[0].GetAddressOf());
+		this->gDeviceContext->VSSetConstantBuffers(1, 1, this->cameraBuffer[1].GetAddressOf());
+		this->gDeviceContext->VSSetConstantBuffers(2, 1, this->transformBuffer.GetAddressOf());
 
 		for (UINT j = 0; j < meshes[i].get()->getFaceCount(); ++j)
 		{
@@ -1844,16 +1894,18 @@ void DX::RenderGBuffer()
 }
 void DX::ClearGBufferTargets()
 {
-	float clearColor[] = { 0.17f, 0.84f, 0.9f, 1.0f };
+	float clearColor[] { 0.17f, 0.84f, 0.9f, 1.0f };
+	float clearColor2[]{ 0.25f, 0.0f, 0.84f, 1.0f };
+	float clearColor3[]{ 0.0f, 0.5f, 1.0f, 1.0f };
 
 	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[0].Get(), clearColor);
-	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[1].Get(), clearColor);
-	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[2].Get(), clearColor);
+	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[1].Get(), clearColor2);
+	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[2].Get(), clearColor3);
 }
 void DX::Render()
 {
 	this->gDeviceContext->IASetInputLayout(this->gVertexLayout.Get());
-	this->gDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	this->gDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	this->gDeviceContext->RSSetState(this->gRasterizerState.Get());
 	this->ClearGBufferTargets();
 	this->RenderGBuffer();

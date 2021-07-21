@@ -15,6 +15,7 @@ private:
 	ComPtr<ID3D11RasterizerState>		gRasterizerState			{};
 	ComPtr<ID3D11Texture2D>				gDepthStencil[2]			{};
 	ComPtr<ID3D11DepthStencilView>		gDepthStencilView[2]		{};
+	ComPtr<ID3D11DepthStencilState>		gDepthStencilState			{};
 	ComPtr<ID3D11RenderTargetView>		gBackbufferRTV[2]			{};
 
 	//Default Textures
@@ -25,7 +26,7 @@ private:
 	//G-Buffer
 	ComPtr<ID3D11Texture2D>				gGBufferTextures[3]			{};
 	ComPtr<ID3D11RenderTargetView>		gGBufferRTVs[3]				{};
-	ComPtr<ID3D11ShaderResourceView>	gGBufferSRVs[3]			{};
+	ComPtr<ID3D11ShaderResourceView>	gGBufferSRVs[3]				{};
 
 
 	struct ACTIVEPOINTLIGHTS{
@@ -137,8 +138,10 @@ private:
 	HRESULT CreateDeviceSwapchain(HWND* wndHandle);
 	HRESULT CreateDepthBuffer(int index);
 	HRESULT CreateDepthStencil(int index, ID3D11Texture2D* pBackBuffer);
+	HRESULT CreateDepthStencilState();
 	HRESULT CreateGBufferResources();
 	HRESULT CreateRasterizerState();
+	void setScissorRect();
 	void setViewPort();
 
 	void CreateShaders();

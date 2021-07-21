@@ -208,9 +208,11 @@ namespace NODETYPES
 
 		struct VERTEX
 		{
-			float point[3]{};
-			float normal[3]{};
-			float uv[2]{};
+			float point[3]		{};
+			float normal[3]		{};
+			float tangent[3]	{};
+			float bitangent[3]	{};
+			float uv[2]			{};
 		};
 
 		struct FACE
@@ -433,14 +435,14 @@ namespace NODETYPES
 		{
 			D3D11_MAPPED_SUBRESOURCE dataPtr {};
 			gDeviceContext->Map(this->faces[faceIndex].gVertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
-			memcpy(dataPtr.pData, this->faces[faceIndex].vertexList.data(), this->faces[faceIndex].vertexList.size());
+			memcpy(dataPtr.pData, this->faces[faceIndex].vertexList.data(), sizeof(NODETYPES::Mesh::VERTEX) * this->faces[faceIndex].vertexList.size());
 			gDeviceContext->Unmap(this->faces[faceIndex].gVertexBuffer.Get(), 0);
 		}
 		void updateVertexIDToBuffer(UINT faceIndex, ID3D11DeviceContext* gDeviceContext)
 		{
 			D3D11_MAPPED_SUBRESOURCE dataPtr{};
 			gDeviceContext->Map(this->faces[faceIndex].gVertexIDBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
-			memcpy(dataPtr.pData, this->faces[faceIndex].vertexIDList.data(), this->faces[faceIndex].vertexIDList.size());
+			memcpy(dataPtr.pData, this->faces[faceIndex].vertexIDList.data(), sizeof(UINT32) * this->faces[faceIndex].vertexIDList.size());
 			gDeviceContext->Unmap(this->faces[faceIndex].gVertexIDBuffer.Get(), 0);
 		}
 
@@ -1079,7 +1081,7 @@ namespace NODETYPES
 			}
 			else if(this->materials[0]->getType() == "blinn")
 			{
-				return dynamic_cast<NODETYPES::Blinn*>(this->materials[0])->getNormalMap();
+				return dynamic_cast<NODETYPES::Blinn*>(this->materials[0])->getDiffuseMap();
 			}
 			return nullptr;
 		}
