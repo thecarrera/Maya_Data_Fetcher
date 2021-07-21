@@ -5,12 +5,12 @@ SamplerState sampAni	: register(s0);
 
 struct PS_IN
 {
-    float4 Pos : SV_POSITION;
-    float4 Norm : NORMAL;
-    float2 UV : TEXCOORD;
-    float4 wPos : WPOSITION;
-    float3 oTangent : TANGIENT;
-    float3 oBTangent : BITANGIENT;
+    float4 Pos       : SV_POSITION;
+    float4 Norm      : NORMAL;
+    float4 oTangent  : TANGENT;
+    float4 oBTangent : BINORMAL;
+	float2 UV	     : TEXCOORD;
+    float4 wPos      : WPOSITION;
 };
 
 struct PS_OUT
@@ -22,14 +22,15 @@ struct PS_OUT
 
 PS_OUT PS_main(in PS_IN input)
 {
-    PS_OUT output = (PS_OUT)0;
+    PS_OUT output = (PS_OUT) 0;
     
     float2 uv = input.UV;
     uv.y = 1 - uv.y;
     float3 diffuseAlbedo = txDiffuse.Sample(sampAni, uv).rgb;
-    
+    diffuseAlbedo = float3(1.0f, 0.f, 0.f);
     //Normal Map
     float3 normMap = normalMap.Sample(sampAni, uv).xyz;
+    normMap = float3(0.5f, 0.5f, 0.5f);
     normMap = 2.0f * normMap - 1.0f;
     float3 N = normalize(input.Norm);
     float3 T = normalize(input.oTangent - dot(input.oTangent, N) * N);

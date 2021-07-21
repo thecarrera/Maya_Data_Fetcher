@@ -32,17 +32,14 @@ float2x3 faceEdgeCalc(float3 Pos0, float3 Pos1, float3 Pos2)
 {
     float3 edge1 = Pos1 - Pos0;
     float3 edge2 = Pos2 - Pos0;
-    float2x3 texEdges = { edge1, edge2 };
-    return texEdges;
+    return float2x3(edge1, edge2);
 }
 float2x2 texUVCalc(float2 uv0, float2 uv1, float2 uv2)
 {
     float2 edge1 = uv1 - uv0;
     float2 edge2 = uv2 - uv0;
-    float2x2 texUVs = { edge1, edge2 };
-    return texUVs;
+    return float2x2(edge1, edge2);
 }
-
 float2x2 inverseMat(float det, float2x2 texUVs)
 {
     float2x2 tempTexUVs = { texUVs._m11, -texUVs._m01, -texUVs._m10, texUVs._m00 };
@@ -68,7 +65,7 @@ float2x3 matriceMult(float2x2 UV, float2x3 Edges)
 [maxvertexcount(3)]
 void GS_main( triangle GS_IN input[3], inout TriangleStream<GS_OUT> OutputStream)
 {
-    GS_OUT output = (GS_OUT) 0;
+    GS_OUT output = (GS_OUT)0;
 	
 	//Normal Map
     float2x3 faceEdges = faceEdgeCalc(input[0].Pos.xyz, input[1].Pos.xyz, input[2].Pos.xyz);
@@ -81,24 +78,16 @@ void GS_main( triangle GS_IN input[3], inout TriangleStream<GS_OUT> OutputStream
     float2x3 objTB = matriceMult(texUVs, faceEdges);
     float3 objTan = { objTB._m00, objTB._m01, objTB._m02 };
     float3 objBTan = { objTB._m10, objTB._m11, objTB._m12 };
-	
-    //Backface Culling
-    //float2x4 triEdges = faceEdgeCalc((mul(mul(mul(input[0].Pos, worldMat), viewMat), projMat)).xyz, (mul(mul(mul(input[1].Pos, worldMat), viewMat), projMat)).xyz, (mul(mul(mul(input[2].Pos, worldMat), viewMat), projMat)).xyz);
-    //
-    //float3 normal = normalize(cross(float3(triEdges._m00, triEdges._m01, triEdges._m02), float3(triEdges._m10, triEdges._m11, triEdges._m12)));
-    //
-    //if (dot(normal.xyz, -mul(mul(mul(input[0].Pos, worldMat), viewMat), projMat).xyz) > 0.0f)
-    //{
-        for (int i = 0; i < 3; i++)
-        {
-            output.Pos = mul(mul(mul(input[i].Pos, worldMat), viewMat), projMat);
-            output.Norm = float4(input[i].Norm, 1.0f);
-            output.UV = input[i].UV;
-            output.wPos = mul(input[i].Pos, worldMat).xyzw;
-            output.oTangent = objTan;
-            output.oBTangent = objBTan;
 
-            OutputStream.Append(output);
-        }
-    //}
+    for (int i = 0; i < 3; ++i)
+    {
+        output.Pos = mul(mul(mul(input[i].Pos, worldMat), viewMat), projMat);
+        output.Norm = float4(input[i].Norm, 1.0f);
+        output.UV = input[i].UV;
+        output.wPos = float4(mul(input[i].Pos, worldMat).xyz, 1.0f);
+        output.oTangent = objTan;
+        output.oBTangent = objBTan;
+    
+        OutputStream.Append(output);
+    }
 }

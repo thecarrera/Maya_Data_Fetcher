@@ -1085,30 +1085,97 @@ void pSendVertexData(MObject& object)
 	MString debugString {};
 	struct VERTEX
 	{
-		float point[3]	{};
-		float normal[3]	{};
-		float uv[2]		{};
+		float point[3]		{};
+		float normal[3]		{};
+		float tangent[3]	{};
+		float bitangent[3]	{};
+		float uv[2]			{};
 	};
 	std::vector<VERTEX> vertexList	{};
 	std::vector<UINT32> vertexIDs	{};
 	vertexList.resize(100);
 	vertexIDs.resize(200);
-	int counter {-1};
-
+	int counter  {-1};
+	int counter2 {-1};
 	MFnMesh mesh{ object };
 	std::string uuid{mesh.uuid().asString().asChar()};
 	size_t uuidSize{uuid.size()};
 
-	std::vector<char> msg {};
-	size_t messageSize {};
-
-	MStringArray uvSetNames{};
-	mesh.getUVSetNames(uvSetNames);
+	std::vector<char> msg	{};
+	size_t messageSize		{};
+	std::vector<char> msg2	{};
+	size_t messageSize2		{};
 
 	// Object-Relative vertex positions. 8 for a cube.
 	MPointArray vertexLookUpTable{};
 	mesh.getPoints(vertexLookUpTable);
 	
+	MStringArray uvSetNames{};
+	mesh.getUVSetNames(uvSetNames);
+
+	MFloatVectorArray normalLookup{};
+	mesh.getNormals(normalLookup, MSpace::kObject);
+	debugString = "Object Normal length";
+	debugString += normalLookup.length();
+	MGlobal::displayInfo(debugString);
+	for (size_t i = 0; i < normalLookup.length(); ++i)
+	{
+		debugString = "R: ";
+		debugString += normalLookup[i].x;
+		debugString += " G: ";
+		debugString += normalLookup[i].y;
+		debugString += " B: ";
+		debugString += normalLookup[i].z;
+		MGlobal::displayInfo(debugString);
+	}
+
+	MFloatVectorArray tangentLookup{};
+	mesh.getTangents(tangentLookup, MSpace::kObject, &uvSetNames[0]);
+	debugString = "Tangent Normal length";
+	debugString += tangentLookup.length();
+	MGlobal::displayInfo(debugString);
+	for (size_t i = 0; i < tangentLookup.length(); ++i)
+	{
+		debugString = "R: ";
+		debugString += tangentLookup[i].x;
+		debugString += " G: ";
+		debugString += tangentLookup[i].y;
+		debugString += " B: ";
+		debugString += tangentLookup[i].z;
+		MGlobal::displayInfo(debugString);
+	}
+
+	MFloatVectorArray bitangentLookup{};
+	mesh.getBinormals(bitangentLookup, MSpace::kObject, &uvSetNames[0]);
+	debugString = "Bitangent Normal length";
+	debugString += bitangentLookup.length();
+	MGlobal::displayInfo(debugString);
+	for (size_t i = 0; i < bitangentLookup.length(); ++i)
+	{
+		debugString = "R: ";
+		debugString += bitangentLookup[i].x;
+		debugString += " G: ";
+		debugString += bitangentLookup[i].y;
+		debugString += " B: ";
+		debugString += bitangentLookup[i].z;
+		MGlobal::displayInfo(debugString);
+	}
+
+	// UV Space UVs -> 14 for a cube
+	MFloatArray U, V;
+	mesh.getUVs(U, V, &uvSetNames[0]);
+	MGlobal::displayInfo("UV count");
+	debugString = U.length();
+	MGlobal::displayInfo(debugString);
+	for (size_t i = 0; i < U.length(); ++i)
+	{
+		debugString = "U: ";
+		debugString += U[i];
+		debugString += " | V: ";
+		debugString += V[i];
+		MGlobal::displayInfo(debugString);
+	}
+
 	MItMeshPolygon faceIt(object, &res);
 	if (res == MS::kSuccess)
 	{
@@ -1160,12 +1227,22 @@ void pSendVertexData(MObject& object)
 			faceIt.getPoints(facePointList);
 			UINT faceVertexCount {facePointList.length()};
 			
-			MVectorArray faceNormalArray	{};
-			faceIt.getNormals(faceNormalArray, MSpace::kObject);
+			MVectorArray norms {};
+			faceIt.getNormals(norms, MSpace::kObject);
+			debugString = "Face Normal length";
+			debugString += norms.length();
+			MGlobal::displayInfo(debugString);
+			for (size_t i = 0; i < norms.length(); ++i)
+			{
+				debugString = "R: ";
+				debugString += norms[i].x;
+				debugString += " G: ";
+				debugString += norms[i].y;
+				debugString += " B: ";
+				debugString += norms[i].z;
+				MGlobal::displayInfo(debugString);
+			}
 
-			MFloatArray faceUs	{};
-			MFloatArray faceVs	{};
-			faceIt.getUVs(faceUs, faceVs, &uvSetNames[0]);
 			//####################################################
 			//####################################################
 			//#					VERTEX ALLOCATION				 #
@@ -1199,7 +1276,7 @@ void pSendVertexData(MObject& object)
 			
 			//###################################################
 			//###################################################
-			//#				VERTEXLIST  QUERY					# 
+			//#				VERTEXLIST/ID  QUERY				# 
 			//###################################################
 			//###################################################
 
@@ -1214,177 +1291,19 @@ void pSendVertexData(MObject& object)
 				uuidSize +
 				(sizeof(UINT) * 2) +
 				sizeof(int) +
-				vertexList.size()
+				sizeof(VERTEX) * 100
 			);
-			for (UINT i = 0; i < faceVertexCount; ++i)
-			{
-				counter++;
-
-				VERTEX vertex {};
-
-				vertexList[counter].point[0] = static_cast<float>(facePointList[i].x);
-				vertexList[counter].point[1] = static_cast<float>(facePointList[i].y);
-				vertexList[counter].point[2] = static_cast<float>(facePointList[i].z);
-			
-				debugString = "Vertex: (";
-				debugString += facePointList[i].x;
-				debugString += ", ";
-				debugString += facePointList[i].y;
-				debugString += ", ";
-				debugString += facePointList[i].z;
-				debugString += ")";
-				MGlobal::displayInfo(debugString);
-
-				debugString = "\tVertex: (";
-				debugString += vertexList[counter].point[0];
-				debugString += ", ";
-				debugString += vertexList[counter].point[1];
-				debugString += ", ";
-				debugString += vertexList[counter].point[2];
-				debugString += ")";
-				MGlobal::displayInfo(debugString);
-
-				vertexList[counter].normal[0] = static_cast<float>(faceNormalArray[i].x);
-				vertexList[counter].normal[1] = static_cast<float>(faceNormalArray[i].y);
-				vertexList[counter].normal[2] = static_cast<float>(faceNormalArray[i].z);
-			
-				debugString = "Normal: (";
-				debugString += faceNormalArray[i].x;
-				debugString += ", ";
-				debugString += faceNormalArray[i].y;
-				debugString += ", ";
-				debugString += faceNormalArray[i].z;
-				debugString += ")";
-				MGlobal::displayInfo(debugString);
-
-				debugString = "\tNormal: (";
-				debugString += vertexList[counter].normal[0];
-				debugString += ", ";
-				debugString += vertexList[counter].normal[1];
-				debugString += ", ";
-				debugString += vertexList[counter].normal[2];
-				debugString += ")";
-				MGlobal::displayInfo(debugString);
-
-				vertexList[counter].uv[0] = static_cast<float>(faceUs[i]);
-				vertexList[counter].uv[1] = static_cast<float>(faceVs[i]);
-			
-				debugString = "UV: (";
-				debugString += faceUs[i];
-				debugString += ", ";
-				debugString += faceVs[i];
-				debugString += ")";
-				MGlobal::displayInfo(debugString);
-
-				debugString = "\\tUV: (";
-				debugString += vertexList[counter].uv[0];
-				debugString += ", ";
-				debugString += vertexList[counter].uv[1];
-				debugString += ")\n";
-				MGlobal::displayInfo(debugString);
-
-				if (counter % 99 == 0 && counter != 0)
-				{
-					memcpy(msg.data(), &uuidSize, STSIZE);
-					messageSize += STSIZE;
-					memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
-					messageSize += uuidSize;
-			
-					memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
-					messageSize += sizeof(UINT);
-					memcpy(msg.data() + messageSize, &i, sizeof(UINT));
-					messageSize += sizeof(UINT);
-					memcpy(msg.data() + messageSize, &counter, sizeof(int));
-					messageSize += sizeof(int);
-					memcpy(msg.data() + messageSize, vertexList.data(), sizeof(VERTEX) * (counter + 1));
-					messageSize += sizeof(VERTEX) * (counter + 1);
-			
-					comlib.addToPackage(
-						msg.data(),
-						ComLib::MSG_TYPE::UPDATEVALUES,
-						ComLib::ATTRIBUTE_TYPE::VERTEX,
-						messageSize
-					);
-					messageSize = 0;
-					counter = -1;
-				}
-			}
-			if (counter >= 0)
-			{
-				debugString = "counter: ";
-				debugString += static_cast<UINT>(counter);
-				MGlobal::displayInfo(debugString);
-				debugString = "MessageSize: ";
-				debugString += static_cast<UINT>(messageSize);
-				MGlobal::displayInfo(debugString);
-				
-				memcpy(msg.data(), &uuidSize, STSIZE);
-				messageSize += STSIZE;
-				memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
-				messageSize += uuidSize;
-
-				debugString = "STSIZE: ";
-				debugString += static_cast<UINT>(STSIZE);
-				MGlobal::displayInfo(debugString);
-				debugString = "uuidSize: ";
-				debugString += static_cast<UINT>(uuidSize);
-				MGlobal::displayInfo(debugString);
-				
-				memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
-				messageSize += sizeof(UINT);
-				memcpy(msg.data() + messageSize, &faceVertexCount, sizeof(UINT));
-				messageSize += sizeof(UINT);
-				memcpy(msg.data() + messageSize, &counter, sizeof(int));
-				messageSize += sizeof(int);
-				
-				debugString = "UINT size: ";
-				debugString += static_cast<UINT>(sizeof(UINT));
-				MGlobal::displayInfo(debugString);
-				debugString = "int size: ";
-				debugString += static_cast<UINT>(sizeof(int));
-				MGlobal::displayInfo(debugString);
-
-				memcpy(msg.data() + messageSize, vertexList.data(), sizeof(VERTEX) * (counter + 1));
-				messageSize += sizeof(VERTEX) * (counter + 1);
-				
-				debugString = "vertex list size: ";
-				debugString += static_cast<UINT>(sizeof(UINT32) * (counter + 1));
-				MGlobal::displayInfo(debugString);
-				debugString = "New messageSize: ";
-				debugString += static_cast<UINT>(messageSize);
-				MGlobal::displayInfo(debugString);
-			
-				comlib.addToPackage(
-					msg.data(),
-					ComLib::MSG_TYPE::UPDATEVALUES,
-					ComLib::ATTRIBUTE_TYPE::VERTEX,
-					messageSize
-				);
-				msg.clear();
-				messageSize = 0;
-				counter = -1;
-			}
-
-			//###################################################
-			//###################################################
-			//#				   VERTEXIDs QUERY					#
-			//###################################################
-			//###################################################
-			
 			// Converts Object-Relative IDs to Face-Relative IDs
-			msg.resize(
+			msg2.resize(
 				STSIZE +
 				uuidSize +
 				(sizeof(UINT) * 2) +
 				sizeof(int) +
-				vertexIDs.size()
+				sizeof(UINT32) * 200
 			);
+			MGlobal::displayInfo("-----------");
 			for (size_t i = 0; i < faceIDCount; ++i)
 			{
-				debugString = "ID: ";
-				debugString += objectRelativeTriangleIDs[i];
-				MGlobal::displayInfo(debugString);
-
 				for (UINT j = 0; j < faceVertexCount; ++j)
 				{
 					if (vertexLookUpTable[objectRelativeTriangleIDs[i]].x == facePointList[j].x &&
@@ -1392,33 +1311,143 @@ void pSendVertexData(MObject& object)
 						vertexLookUpTable[objectRelativeTriangleIDs[i]].z == facePointList[j].z
 						)
 					{
-						counter++;
-						vertexIDs[counter] = j;
-
-						if (counter % 199 == 0 && counter != 0)
+						counter2++;
+						vertexIDs[counter2] = j;
+						
+						if ((i != 3) && (i != 4))
 						{
-							memcpy(msg.data(), &uuidSize, STSIZE);
-							messageSize += STSIZE;
-							memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
-							messageSize += uuidSize;
+							counter++;
+							// Used to correct winding order for Dx11
+							UINT virtPos{};
+							if (j == 2)
+							{
+								virtPos = j+1;
+							}
+							else if (j == 3)
+							{
+								virtPos = j-1;
+							}
+							else
+							{
+								virtPos = j;
+							}
 
-							memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
-							messageSize += sizeof(UINT);
-							memcpy(msg.data() + messageSize, &i, sizeof(UINT));
-							messageSize += sizeof(UINT);
-							memcpy(msg.data() + messageSize, &counter, sizeof(int));
-							messageSize += sizeof(int);
-							memcpy(msg.data() + messageSize, vertexIDs.data(), sizeof(UINT32) * (counter + 1));
-							messageSize += sizeof(UINT32) * (counter + 1);
+
+							vertexList[counter].point[0] = static_cast<float>(facePointList[virtPos].x);
+							vertexList[counter].point[1] = static_cast<float>(facePointList[virtPos].y);
+							vertexList[counter].point[2] = static_cast<float>(facePointList[virtPos].z);
+
+							debugString = "X: ";
+							debugString += vertexList[counter].point[0];
+							debugString += " Y: ";
+							debugString += vertexList[counter].point[1];
+							debugString += " Z: ";
+							debugString += vertexList[counter].point[2];
+							MGlobal::displayInfo(debugString);
+
+							MVector faceVertNormal{};
+							faceIt.getNormal(virtPos, faceVertNormal, MSpace::kObject);
+							vertexList[counter].normal[0] = static_cast<float>(faceVertNormal.x);
+							vertexList[counter].normal[1] = static_cast<float>(faceVertNormal.y);
+							vertexList[counter].normal[2] = static_cast<float>(faceVertNormal.z);
+
+							debugString = "R: ";
+							debugString += vertexList[counter].normal[0];
+							debugString += " G: ";
+							debugString += vertexList[counter].normal[1];
+							debugString += " B: ";
+							debugString += vertexList[counter].normal[2];
+							MGlobal::displayInfo(debugString);
+
+							MVector tangentVector {};
+							UINT tangentIndex {faceIt.tangentIndex(virtPos)};
+							vertexList[counter].tangent[0] = static_cast<float>(tangentLookup[tangentIndex].x);
+							vertexList[counter].tangent[1] = static_cast<float>(tangentLookup[tangentIndex].y);
+							vertexList[counter].tangent[2] = static_cast<float>(tangentLookup[tangentIndex].z);
+
+							vertexList[counter].bitangent[0] = static_cast<float>(bitangentLookup[tangentIndex].x);
+							vertexList[counter].bitangent[1] = static_cast<float>(bitangentLookup[tangentIndex].y);
+							vertexList[counter].bitangent[2] = static_cast<float>(bitangentLookup[tangentIndex].z);
+
+							debugString = "TR: ";
+							debugString += vertexList[counter].tangent[0];
+							debugString += " TG: ";
+							debugString += vertexList[counter].tangent[1];
+							debugString += " TB: ";
+							debugString += vertexList[counter].tangent[2];
+							MGlobal::displayInfo(debugString);
+
+							debugString = "BR: ";
+							debugString += vertexList[counter].bitangent[0];
+							debugString += " BG: ";
+							debugString += vertexList[counter].bitangent[1];
+							debugString += " BB: ";
+							debugString += vertexList[counter].bitangent[2];
+							MGlobal::displayInfo(debugString);
+
+							int uvIndex{};
+							faceIt.getUVIndex(static_cast<int>(virtPos), uvIndex, &uvSetNames[0]);
+							vertexList[counter].uv[0] = static_cast<float>(U[uvIndex]);
+							vertexList[counter].uv[1] = static_cast<float>(V[uvIndex]);
+					
+							debugString = "U: ";
+							debugString += vertexList[counter].uv[0];
+							debugString += " V: ";
+							debugString += vertexList[counter].uv[1];
+							MGlobal::displayInfo(debugString);
+
+							MGlobal::displayInfo("-----------");
+						
+							if (counter % 99 == 0 && counter != 0)
+							{
+								memcpy(msg.data(), &uuidSize, STSIZE);
+								messageSize += STSIZE;
+								memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+								messageSize += uuidSize;
+
+								memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
+								messageSize += sizeof(UINT);
+								memcpy(msg.data() + messageSize, &i, sizeof(UINT));
+								messageSize += sizeof(UINT);
+								memcpy(msg.data() + messageSize, &counter, sizeof(int));
+								messageSize += sizeof(int);
+								memcpy(msg.data() + messageSize, vertexList.data(), sizeof(VERTEX) * static_cast<size_t>(counter + 1));
+								messageSize += sizeof(VERTEX) * static_cast<size_t>(counter + 1);
+
+								comlib.addToPackage(
+									msg.data(),
+									ComLib::MSG_TYPE::UPDATEVALUES,
+									ComLib::ATTRIBUTE_TYPE::VERTEX,
+									messageSize
+								);
+								messageSize = 0;
+								counter = -1;
+							}
+						}
+						if (counter2 % 199 == 0 && counter2 != 0)
+						{
+							memcpy(msg2.data(), &uuidSize, STSIZE);
+							messageSize2 += STSIZE;
+							memcpy(msg2.data() + messageSize2, &uuid[0], uuidSize);
+							messageSize2 += uuidSize;
+
+							memcpy(msg2.data() + messageSize2, &faceIndex, sizeof(UINT));
+							messageSize2 += sizeof(UINT);
+							memcpy(msg2.data() + messageSize2, &i, sizeof(UINT));
+							messageSize2 += sizeof(UINT);
+							memcpy(msg2.data() + messageSize2, &counter2, sizeof(int));
+							messageSize2 += sizeof(int);
+							memcpy(msg2.data() + messageSize2, vertexIDs.data(), sizeof(UINT32) * static_cast<size_t>(counter2 + 1));
+							messageSize2 += sizeof(UINT32) * static_cast<size_t>(counter2 + 1);
 
 							comlib.addToPackage(
-								msg.data(),
+								msg2.data(),
 								ComLib::MSG_TYPE::UPDATEVALUES,
 								ComLib::ATTRIBUTE_TYPE::VERTEXID,
-								messageSize
+								messageSize2
 							);
-							messageSize = 0;
-							counter = -1;
+							messageSize2 = 0;
+							counter2 = -1;
 						}
 					}
 				}
@@ -1429,69 +1458,51 @@ void pSendVertexData(MObject& object)
 				messageSize += STSIZE;
 				memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 				messageSize += uuidSize;
-		
+
 				memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
 				messageSize += sizeof(UINT);
-				memcpy(msg.data() + messageSize, &faceIDCount, sizeof(UINT));
+				memcpy(msg.data() + messageSize, &faceVertexCount, sizeof(UINT));
 				messageSize += sizeof(UINT);
 				memcpy(msg.data() + messageSize, &counter, sizeof(int));
 				messageSize += sizeof(int);
-				memcpy(msg.data() + messageSize, vertexIDs.data(), sizeof(UINT32) * (counter + 1));
-				messageSize += sizeof(UINT32) * (counter + 1);
-		
+
+				memcpy(msg.data() + messageSize, vertexList.data(), (sizeof(VERTEX) * static_cast<size_t>(counter + 1)));
+				messageSize += (sizeof(VERTEX) * static_cast<size_t>(counter + 1));
+
 				comlib.addToPackage(
 					msg.data(),
 					ComLib::MSG_TYPE::UPDATEVALUES,
-					ComLib::ATTRIBUTE_TYPE::VERTEXID,
+					ComLib::ATTRIBUTE_TYPE::VERTEX,
 					messageSize
 				);
+				msg.clear();
 				messageSize = 0;
 				counter = -1;
 			}
-
-			MGlobal::displayInfo("------------");
-			debugString = "face IDs size: ";
-			debugString += static_cast<UINT>(vertexIDs.size());
-			MGlobal::displayInfo(debugString);
-			for (size_t i = 0; i < vertexIDs.size(); ++i)
+			if (counter2 >= 0)
 			{
-				debugString = "ID: ";
-				debugString += vertexIDs[i];
-				MGlobal::displayInfo(debugString);
-			}
-			MGlobal::displayInfo("------------");
-			debugString = "facePoint size: ";
-			debugString += static_cast<UINT>(vertexList.size());
-			MGlobal::displayInfo(debugString);
-			for (size_t i = 0; i < faceVertexCount; i++)
-			{
-				debugString = static_cast<UINT>(i);
-				MGlobal::displayInfo(debugString);
-				debugString = "\tVertex: (";
-				debugString += vertexList[i].point[0];
-				debugString += ", ";
-				debugString += vertexList[i].point[1];
-				debugString += ", ";
-				debugString += vertexList[i].point[2];
-				debugString += ")";
-				MGlobal::displayInfo(debugString);
+				memcpy(msg2.data(), &uuidSize, STSIZE);
+				messageSize2 += STSIZE;
+				memcpy(msg2.data() + messageSize2, &uuid[0], uuidSize);
+				messageSize2 += uuidSize;
 
-				debugString = "\tNormal: (";
-				debugString += vertexList[i].normal[0];
-				debugString += ", ";
-				debugString += vertexList[i].normal[1];
-				debugString += ", ";
-				debugString += vertexList[i].normal[2];
-				debugString += ")";
-				MGlobal::displayInfo(debugString);
+				memcpy(msg2.data() + messageSize2, &faceIndex, sizeof(UINT));
+				messageSize2 += sizeof(UINT);
+				memcpy(msg2.data() + messageSize2, &faceIDCount, sizeof(UINT));
+				messageSize2 += sizeof(UINT);
+				memcpy(msg2.data() + messageSize2, &counter2, sizeof(int));
+				messageSize2 += sizeof(int);
+				memcpy(msg2.data() + messageSize2, vertexIDs.data(), sizeof(UINT32) * static_cast<size_t>(counter2 + 1));
+				messageSize2 += sizeof(UINT32) * static_cast<size_t>(counter2 + 1);
 
-				debugString = "\\tUV: (";
-				debugString += vertexList[i].uv[0];
-				debugString += ", ";
-				debugString += vertexList[i].uv[1];
-				debugString += ")\n";
-				MGlobal::displayInfo(debugString);
-
+				comlib.addToPackage(
+					msg2.data(),
+					ComLib::MSG_TYPE::UPDATEVALUES,
+					ComLib::ATTRIBUTE_TYPE::VERTEXID,
+					messageSize2
+				);
+				messageSize2 = 0;
+				counter2 = -1;
 			}
 			MGlobal::displayInfo("####################################################");
 		}
