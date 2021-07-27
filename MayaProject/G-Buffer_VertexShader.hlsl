@@ -32,8 +32,8 @@ VS_OUT VS_main(VS_IN input)
 {
     VS_OUT output = (VS_OUT)0;
     
-    //output.Pos = float4(mul(mul(mul(float4(input.Pos, 1.0f), worldMat), viewMat), projMat).xyz, 1.0f);
-    output.Pos = float4(input.Pos, 1.0f);
+    output.Pos = mul(mul(mul(float4(input.Pos, 1.0f), worldMat), viewMat), projMat);
+    //output.Pos = float4(input.Pos, 1.0f);
     output.Norm = float4(input.Norm, 1.0f);
     output.oTangent = float4(input.Tangent, 1.0f);
     output.oBitangent = float4(input.Bitangent, 1.0f);

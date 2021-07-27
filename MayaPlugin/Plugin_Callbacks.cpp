@@ -128,6 +128,7 @@
 #include "maya_includes.h"
 #include "ComLib.h"
 #include <array>
+#include <DirectXMath.h>
 
 MCallbackIdArray myCallbackArray;
 ComLib comlib("sharedFileMap", (25ULL << 23ULL)); //200MB
@@ -175,22 +176,174 @@ ComLib comlib("sharedFileMap", (25ULL << 23ULL)); //200MB
 //}
 //##################
  
+void pPrintMatrix(MMatrix mat)
+{
+	MString debugString{};
+	debugString = "\n";
+	debugString += mat[0][0];
+	debugString += " ";
+	debugString += mat[0][1];
+	debugString += " ";
+	debugString += mat[0][2];
+	debugString += " ";
+	debugString += mat[0][3];
+	debugString += "\n";
+
+	debugString += mat[1][0];
+	debugString += " ";
+	debugString += mat[1][1];
+	debugString += " ";
+	debugString += mat[1][2];
+	debugString += " ";
+	debugString += mat[1][3];
+	debugString += "\n";
+
+	debugString += mat[2][0];
+	debugString += " ";
+	debugString += mat[2][1];
+	debugString += " ";
+	debugString += mat[2][2];
+	debugString += " ";
+	debugString += mat[2][3];
+	debugString += "\n";
+
+	debugString += mat[3][0];
+	debugString += " ";
+	debugString += mat[3][1];
+	debugString += " ";
+	debugString += mat[3][2];
+	debugString += " ";
+	debugString += mat[3][3];
+
+	MGlobal::displayInfo(debugString);
+}
+void pPrintMatrix(double mat[4][4])
+{
+	MString debugString {};
+	debugString = "\n";
+	debugString += mat[0][0];
+	debugString += " ";
+	debugString += mat[0][1];
+	debugString += " ";
+	debugString += mat[0][2];
+	debugString += " ";
+	debugString += mat[0][3];
+	debugString += "\n";
+	
+	debugString += mat[1][0];
+	debugString += " ";
+	debugString += mat[1][1];
+	debugString += " ";
+	debugString += mat[1][2];
+	debugString += " ";
+	debugString += mat[1][3];
+	debugString += "\n";
+	
+	debugString += mat[2][0];
+	debugString += " ";
+	debugString += mat[2][1];
+	debugString += " ";
+	debugString += mat[2][2];
+	debugString += " ";
+	debugString += mat[2][3];
+	debugString += "\n";
+	
+	debugString += mat[3][0];
+	debugString += " ";
+	debugString += mat[3][1];
+	debugString += " ";
+	debugString += mat[3][2];
+	debugString += " ";
+	debugString += mat[3][3];
+
+	MGlobal::displayInfo(debugString);
+}
+void pPrintMatrix(DirectX::XMMATRIX mat)
+{
+	MString debugString{};
+	debugString = "\n";
+	debugString += mat.r[0].m128_f32[0];
+	debugString += " ";
+	debugString += mat.r[0].m128_f32[1];
+	debugString += " ";
+	debugString += mat.r[0].m128_f32[2];
+	debugString += " ";
+	debugString += mat.r[0].m128_f32[3];
+	debugString += "\n";
+
+	debugString += mat.r[1].m128_f32[0];
+	debugString += " ";
+	debugString += mat.r[1].m128_f32[1];
+	debugString += " ";
+	debugString += mat.r[1].m128_f32[2];
+	debugString += " ";
+	debugString += mat.r[1].m128_f32[3];
+	debugString += "\n";
+
+	debugString += mat.r[2].m128_f32[0];
+	debugString += " ";
+	debugString += mat.r[2].m128_f32[1];
+	debugString += " ";
+	debugString += mat.r[2].m128_f32[2];
+	debugString += " ";
+	debugString += mat.r[2].m128_f32[3];
+	debugString += "\n";
+
+	debugString += mat.r[3].m128_f32[0];
+	debugString += " ";
+	debugString += mat.r[3].m128_f32[1];
+	debugString += " ";
+	debugString += mat.r[3].m128_f32[2];
+	debugString += " ";
+	debugString += mat.r[3].m128_f32[3];
+	debugString += "\n";
+
+	MGlobal::displayInfo(debugString);
+}
+
 //General Micro Data
-void pSendActiveCamera(MFnDagNode& camDAG)
+void pSendActiveCamera(MMatrix& viewMat, MFnDagNode& camDAG)
 {
 	std::string uuid {camDAG.uuid().asString().asChar()};
 	size_t uuidSize {uuid.size()};
 	std::vector<char> msg {};
 	size_t messageSize {};
 	
+	MFnCamera cam {camDAG.object()};
+	MGlobal::displayInfo(cam.name().asChar());
+
+	//viewMat = viewMat.transpose();
+
+	DirectX::XMMATRIX viewMatrix{
+		static_cast<float>(viewMat[0][0]), static_cast<float>(viewMat[0][1]), static_cast<float>(viewMat[0][2]), static_cast<float>(viewMat[0][3]),
+		static_cast<float>(viewMat[1][0]), static_cast<float>(viewMat[1][1]), static_cast<float>(viewMat[1][2]), static_cast<float>(viewMat[1][3]),
+		static_cast<float>(viewMat[2][0]), static_cast<float>(viewMat[2][1]), static_cast<float>(viewMat[2][2]), static_cast<float>(viewMat[2][3]),
+		static_cast<float>(viewMat[3][0]), static_cast<float>(viewMat[3][1]), static_cast<float>(viewMat[3][2]), static_cast<float>(viewMat[3][3])
+	};
+
+	//MPoint camEyePos	{cam.eyePoint(MSpace::kWorld)};
+	//MVector camLookTo	{cam.viewDirection(MSpace::kWorld)};
+	//MVector camUpVec	{cam.upDirection(MSpace::kWorld)};
+	//
+	//DirectX::FXMVECTOR eyePos	{camEyePos.x, camEyePos.y, camEyePos.z};
+	//DirectX::FXMVECTOR lookTo	{camLookTo.x, camLookTo.y, camLookTo.z};
+	//DirectX::FXMVECTOR upVec	{camUpVec.x, camUpVec.y, camUpVec.z};
+	//
+	//DirectX::XMMATRIX viewMatrix {DirectX::XMMatrixLookToRH(eyePos, lookTo, upVec)};
+
+	pPrintMatrix(viewMatrix);
+
 	msg.resize(
 		STSIZE + 
-		uuidSize
+		uuidSize +
+		sizeof(DirectX::XMMATRIX)
 	);
 	memcpy(msg.data(), &uuidSize, STSIZE);
 	messageSize += STSIZE;
 	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 	messageSize += uuidSize;
+	memcpy(msg.data() + messageSize, &viewMatrix, sizeof(DirectX::XMMATRIX));
+	messageSize += sizeof(DirectX::XMMATRIX);
 	
 	comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::ACTIVECAM, ComLib::ATTRIBUTE_TYPE::NONE, messageSize);
 }
@@ -298,48 +451,6 @@ void pSendPlugData(MPlug& plug, MString ownerUuid, ComLib::ATTRIBUTE_TYPE attrib
 //}
 
 //Transform Micro Data
-void pPrintMatrix(double mat[4][4])
-{
-	MString debugString {};
-	debugString = "\n";
-	debugString += mat[0][0];
-	debugString += " ";
-	debugString += mat[1][0];
-	debugString += " ";
-	debugString += mat[2][0];
-	debugString += " ";
-	debugString += mat[3][0];
-	debugString += "\n";
-	
-	debugString += mat[0][1];
-	debugString += " ";
-	debugString += mat[1][1];
-	debugString += " ";
-	debugString += mat[2][1];
-	debugString += " ";
-	debugString += mat[3][1];
-	debugString += "\n";
-	
-	debugString += mat[0][2];
-	debugString += " ";
-	debugString += mat[1][2];
-	debugString += " ";
-	debugString += mat[2][2];
-	debugString += " ";
-	debugString += mat[3][2];
-	debugString += "\n";
-	
-	debugString += mat[0][3];
-	debugString += " ";
-	debugString += mat[1][3];
-	debugString += " ";
-	debugString += mat[2][3];
-	debugString += " ";
-	debugString += mat[3][3];
-
-	MGlobal::displayInfo(debugString);
-}
-
 void pSendMatrixData(MObject& object)
 {
 	MString debugString {};
@@ -493,54 +604,78 @@ void pSendProjectionMatrix(MObject& object)
 	std::string uuid {cam.uuid().asString().asChar()};
 	size_t uuidSize {uuid.size()};
 
-	MFnDependencyNode viewMatrix {cam.parent(0)};
-	std::string viewUuid {viewMatrix.uuid().asString().asChar()};
-	size_t viewUuidSize {viewUuid.size()};
+	// Projection matrix is completely different from directx in calculations.
+	// DX is [0:1] in depth but in openGL it is [1:-1]RH and [-1:1]LH.
+	// Find math to switch between spaces.
+	MFloatMatrix projectionMat {cam.projectionMatrix()};
+	projectionMat = projectionMat.transpose();
 
-	MMatrix projectionMat {cam.projectionMatrix().matrix};
 	double projMat[4][4] {
-		cam.projectionMatrix().matrix[0][0],
-		cam.projectionMatrix().matrix[1][0],
-		cam.projectionMatrix().matrix[2][0],
-		cam.projectionMatrix().matrix[3][0],
+		projectionMat.matrix[0][0],
+		projectionMat.matrix[0][1],
+		projectionMat.matrix[0][2], 
+		projectionMat.matrix[0][3],
 
-		cam.projectionMatrix().matrix[0][1],
-		cam.projectionMatrix().matrix[1][1],
-		cam.projectionMatrix().matrix[2][1],
-		cam.projectionMatrix().matrix[3][1],
+		projectionMat.matrix[1][0],
+		projectionMat.matrix[1][1],
+		projectionMat.matrix[1][2],
+		projectionMat.matrix[1][3],
 
-		cam.projectionMatrix().matrix[0][2],
-		cam.projectionMatrix().matrix[1][2],
-		cam.projectionMatrix().matrix[2][2],
-		cam.projectionMatrix().matrix[3][2],
+		projectionMat.matrix[2][0],
+		projectionMat.matrix[2][1],
+		projectionMat.matrix[2][2],
+		projectionMat.matrix[2][3],
 
-		cam.projectionMatrix().matrix[0][3],
-		cam.projectionMatrix().matrix[1][3],
-		cam.projectionMatrix().matrix[2][3],
-		cam.projectionMatrix().matrix[3][3]
+		projectionMat.matrix[3][0],
+		projectionMat.matrix[3][1],
+		projectionMat.matrix[3][2],
+		projectionMat.matrix[3][3]
 	};
+
+	debugString = "AR: ";
+	debugString += cam.aspectRatio();
+	MGlobal::displayInfo(debugString);
+	debugString = "FovY: ";
+	debugString += cam.verticalFieldOfView();
+	MGlobal::displayInfo(debugString);
+	debugString = "FovX: ";
+	debugString += cam.horizontalFieldOfView();
+	MGlobal::displayInfo(debugString);
+
+	pPrintMatrix(projMat);
+	
+	//float HFOV		{static_cast<float>(cam.horizontalFieldOfView())};
+	//float VFOV		{static_cast<float>(cam.verticalFieldOfView())};
+	//float FOV		{HFOV * VFOV};
+	//float ARO		{static_cast<float>(cam.aspectRatio())};
+	//float nPlane	{static_cast<float>(cam.nearClippingPlane())};
+	//float fPlane	{static_cast<float>(cam.farClippingPlane())};
+	//
+	//DirectX::XMMATRIX projMatrix{};
+	//if (cam.isOrtho())
+	//{
+	//	projMatrix = DirectX::XMMatrixOrthographicLH(HFOV, VFOV, nPlane, fPlane);
+	//}
+	//else 
+	//{
+	//	projMatrix = DirectX::XMMatrixPerspectiveFovLH(FOV, ARO, nPlane, fPlane);
+	//}
+
+	//pPrintMatrix(projMatrix);
 
 	std::vector<char> msg {};
 	size_t messageSize {};
 	msg.resize(
-		(STSIZE * 2) +
+		STSIZE +
 		uuidSize +
-		sizeof(projMat) +
-		viewUuidSize
+		sizeof(projMat)
 	);
 	memcpy(msg.data(), &uuidSize, STSIZE);
 	messageSize += STSIZE;
 	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 	messageSize += uuidSize;
-
 	memcpy(msg.data() + messageSize, &projMat, sizeof(projMat));
 	messageSize += sizeof(projMat);
-
-	memcpy(msg.data() + messageSize, &viewUuidSize, STSIZE);
-	messageSize += STSIZE;
-	memcpy(msg.data() + messageSize, &viewUuid[0], viewUuidSize);
-	messageSize += viewUuidSize;
-
 
 	comlib.addToPackage(
 		msg.data(), 
@@ -548,20 +683,6 @@ void pSendProjectionMatrix(MObject& object)
 		ComLib::ATTRIBUTE_TYPE::PROJMATRIX, 
 		messageSize
 	);
-}
-void pSendCamData(MObject& object)
-{
-	MFnCamera cam(object);
-	MString camUuid = cam.uuid();
-	MString camName = cam.name();
-
-	double ARO = cam.aspectRatio();
-	double HFOV = cam.horizontalFieldOfView();
-	double VFOV = cam.verticalFieldOfView();
-	double nPlane = cam.nearClippingPlane();
-	double fPlane = cam.farClippingPlane();
-
-	//comlib.addToPackage(&camData, ComLib::MSG::UPDATEVALUES, ComLib::MSG_TYPE::CAMDATA, sizeof(comlib::message::camData));
 }
 
 //Mesh Micro Data
@@ -1115,7 +1236,7 @@ void pSendVertexData(MObject& object)
 
 	MFloatVectorArray normalLookup{};
 	mesh.getNormals(normalLookup, MSpace::kObject);
-	debugString = "Object Normal length";
+	/*debugString = "Object Normal length";
 	debugString += normalLookup.length();
 	MGlobal::displayInfo(debugString);
 	for (size_t i = 0; i < normalLookup.length(); ++i)
@@ -1127,11 +1248,11 @@ void pSendVertexData(MObject& object)
 		debugString += " B: ";
 		debugString += normalLookup[i].z;
 		MGlobal::displayInfo(debugString);
-	}
+	}*/
 
 	MFloatVectorArray tangentLookup{};
 	mesh.getTangents(tangentLookup, MSpace::kObject, &uvSetNames[0]);
-	debugString = "Tangent Normal length";
+	/*debugString = "Tangent Normal length";
 	debugString += tangentLookup.length();
 	MGlobal::displayInfo(debugString);
 	for (size_t i = 0; i < tangentLookup.length(); ++i)
@@ -1143,11 +1264,11 @@ void pSendVertexData(MObject& object)
 		debugString += " B: ";
 		debugString += tangentLookup[i].z;
 		MGlobal::displayInfo(debugString);
-	}
+	}*/
 
 	MFloatVectorArray bitangentLookup{};
 	mesh.getBinormals(bitangentLookup, MSpace::kObject, &uvSetNames[0]);
-	debugString = "Bitangent Normal length";
+	/*debugString = "Bitangent Normal length";
 	debugString += bitangentLookup.length();
 	MGlobal::displayInfo(debugString);
 	for (size_t i = 0; i < bitangentLookup.length(); ++i)
@@ -1159,12 +1280,12 @@ void pSendVertexData(MObject& object)
 		debugString += " B: ";
 		debugString += bitangentLookup[i].z;
 		MGlobal::displayInfo(debugString);
-	}
+	}*/
 
 	// UV Space UVs -> 14 for a cube
 	MFloatArray U, V;
 	mesh.getUVs(U, V, &uvSetNames[0]);
-	MGlobal::displayInfo("UV count");
+	/*MGlobal::displayInfo("UV count");
 	debugString = U.length();
 	MGlobal::displayInfo(debugString);
 	for (size_t i = 0; i < U.length(); ++i)
@@ -1174,7 +1295,7 @@ void pSendVertexData(MObject& object)
 		debugString += " | V: ";
 		debugString += V[i];
 		MGlobal::displayInfo(debugString);
-	}
+	}*/
 
 	MItMeshPolygon faceIt(object, &res);
 	if (res == MS::kSuccess)
@@ -1229,19 +1350,19 @@ void pSendVertexData(MObject& object)
 			
 			MVectorArray norms {};
 			faceIt.getNormals(norms, MSpace::kObject);
-			debugString = "Face Normal length";
-			debugString += norms.length();
-			MGlobal::displayInfo(debugString);
-			for (size_t i = 0; i < norms.length(); ++i)
-			{
-				debugString = "R: ";
-				debugString += norms[i].x;
-				debugString += " G: ";
-				debugString += norms[i].y;
-				debugString += " B: ";
-				debugString += norms[i].z;
-				MGlobal::displayInfo(debugString);
-			}
+			//debugString = "Face Normal length";
+			//debugString += norms.length();
+			//MGlobal::displayInfo(debugString);
+			//for (size_t i = 0; i < norms.length(); ++i)
+			//{
+			//	debugString = "R: ";
+			//	debugString += norms[i].x;
+			//	debugString += " G: ";
+			//	debugString += norms[i].y;
+			//	debugString += " B: ";
+			//	debugString += norms[i].z;
+			//	MGlobal::displayInfo(debugString);
+			//}
 
 			//####################################################
 			//####################################################
@@ -1337,13 +1458,13 @@ void pSendVertexData(MObject& object)
 							vertexList[counter].point[1] = static_cast<float>(facePointList[virtPos].y);
 							vertexList[counter].point[2] = static_cast<float>(facePointList[virtPos].z);
 
-							debugString = "X: ";
+							/*debugString = "X: ";
 							debugString += vertexList[counter].point[0];
 							debugString += " Y: ";
 							debugString += vertexList[counter].point[1];
 							debugString += " Z: ";
 							debugString += vertexList[counter].point[2];
-							MGlobal::displayInfo(debugString);
+							MGlobal::displayInfo(debugString);*/
 
 							MVector faceVertNormal{};
 							faceIt.getNormal(virtPos, faceVertNormal, MSpace::kObject);
@@ -1351,13 +1472,13 @@ void pSendVertexData(MObject& object)
 							vertexList[counter].normal[1] = static_cast<float>(faceVertNormal.y);
 							vertexList[counter].normal[2] = static_cast<float>(faceVertNormal.z);
 
-							debugString = "R: ";
+							/*debugString = "R: ";
 							debugString += vertexList[counter].normal[0];
 							debugString += " G: ";
 							debugString += vertexList[counter].normal[1];
 							debugString += " B: ";
 							debugString += vertexList[counter].normal[2];
-							MGlobal::displayInfo(debugString);
+							MGlobal::displayInfo(debugString);*/
 
 							MVector tangentVector {};
 							UINT tangentIndex {faceIt.tangentIndex(virtPos)};
@@ -1369,7 +1490,7 @@ void pSendVertexData(MObject& object)
 							vertexList[counter].bitangent[1] = static_cast<float>(bitangentLookup[tangentIndex].y);
 							vertexList[counter].bitangent[2] = static_cast<float>(bitangentLookup[tangentIndex].z);
 
-							debugString = "TR: ";
+							/*debugString = "TR: ";
 							debugString += vertexList[counter].tangent[0];
 							debugString += " TG: ";
 							debugString += vertexList[counter].tangent[1];
@@ -1383,20 +1504,20 @@ void pSendVertexData(MObject& object)
 							debugString += vertexList[counter].bitangent[1];
 							debugString += " BB: ";
 							debugString += vertexList[counter].bitangent[2];
-							MGlobal::displayInfo(debugString);
+							MGlobal::displayInfo(debugString);*/
 
 							int uvIndex{};
 							faceIt.getUVIndex(static_cast<int>(virtPos), uvIndex, &uvSetNames[0]);
 							vertexList[counter].uv[0] = static_cast<float>(U[uvIndex]);
 							vertexList[counter].uv[1] = static_cast<float>(V[uvIndex]);
 					
-							debugString = "U: ";
+							/*debugString = "U: ";
 							debugString += vertexList[counter].uv[0];
 							debugString += " V: ";
 							debugString += vertexList[counter].uv[1];
-							MGlobal::displayInfo(debugString);
+							MGlobal::displayInfo(debugString);*/
 
-							MGlobal::displayInfo("-----------");
+							//MGlobal::displayInfo("-----------");
 						
 							if (counter % 99 == 0 && counter != 0)
 							{
@@ -1504,7 +1625,7 @@ void pSendVertexData(MObject& object)
 				messageSize2 = 0;
 				counter2 = -1;
 			}
-			MGlobal::displayInfo("####################################################");
+			//MGlobal::displayInfo("####################################################");
 		}
 	}
 	else
@@ -3038,7 +3159,9 @@ void pGetExistingScene()
 		}
 	}
 	
-	pSendActiveCamera(camDAG);
+	MMatrix viewMatrix{};
+	sceneView.modelViewMatrix(viewMatrix);
+	pSendActiveCamera(viewMatrix, camDAG);
 }
 
 void preRenderCallback(const MString& str, void* clientData)
@@ -3051,7 +3174,7 @@ void preRenderCallback(const MString& str, void* clientData)
 	bool sending {};
 
 	M3dView sceneView {sceneView.active3dView()};
-			
+
 	MDagPath camShapeDagPath {};
 	sceneView.getCamera(camShapeDagPath);
 	MFnDagNode camDAG {camShapeDagPath.node()};
@@ -3065,7 +3188,7 @@ void preRenderCallback(const MString& str, void* clientData)
 			switch (connectionType)
 			{
 			case Connection_Status::CONNECTION_TYPE::CONNECTED:
-				MGlobal::displayInfo("6.1");
+				//MGlobal::displayInfo("6.1");
 				comlib.reset();
 				comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFSTART, messageSize);
 				//#### Query all the existing data in the scene
@@ -3092,18 +3215,21 @@ void preRenderCallback(const MString& str, void* clientData)
 	}
 	else
 	{
-		MGlobal::displayInfo("6.2");
-		pSendActiveCamera(camDAG);
+		//MGlobal::displayInfo("6.2");
+		MMatrix viewMatrix {};
+		sceneView.modelViewMatrix(viewMatrix);
+
+		pSendActiveCamera(viewMatrix, camDAG);
 		comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTREND, messageSize);
-		MGlobal::displayInfo("6.3");
+		//MGlobal::displayInfo("6.3");
 		while (sending == false)
 		{
 			MGlobal::displayInfo("sending!");
 			sending = comlib.send();
 		}
-		MGlobal::displayInfo("6.4");
+		//MGlobal::displayInfo("6.4");
 		comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTRST, messageSize);
-		MGlobal::displayInfo("6.5");
+		//MGlobal::displayInfo("6.5");
 	}
 }
 //
@@ -3214,7 +3340,7 @@ EXPORT MStatus initializePlugin(MObject obj)
 	{
 		if (myCallbackArray.append(nodeAddedId) == MS::kSuccess) {};
 	}
-	
+
 	MCallbackId nodeRemovedId{ MDGMessage::addNodeRemovedCallback(
 		pNodeDeleteCallback,
 		kDefaultNodeType,
