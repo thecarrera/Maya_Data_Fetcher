@@ -130,6 +130,7 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 				double worldMatrix[4][4] {};
 				memcpy(&worldMatrix, msg + messageOffset, sizeof(double[4][4]));
 				messageOffset += sizeof(double[4][4]);
+
 				transform->setMatrix(matrix, 0);
 				transform->setMatrix(worldMatrix, 1);
 				transform->setupBuffers(this->gDevice.Get());
@@ -161,24 +162,27 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 			NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
 			if (camera)
 			{
+				//DirectX::XMMATRIX matrix{};
+				//memcpy(&matrix, msg + messageOffset, sizeof(matrix));
+				//messageOffset += sizeof(matrix);
+
 				camera->setProjectionMatrix(matrix);
 				camera->setupBuffers(this->gDevice.Get());
 
-				size_t viewUuidSize		{};
-				std::string viewUuid	{};
+				//size_t viewUuidSize		{};
+				//std::string viewUuid	{};
 
-				memcpy(&viewUuidSize, msg + messageOffset, STSIZE);
-				messageOffset += STSIZE;
-				viewUuid.resize(viewUuidSize);
-				memcpy(&viewUuid[0], msg + messageOffset, viewUuidSize);
-				messageOffset += viewUuidSize;
-
-				NODETYPES::Node* viewMatrix {this->findNode(viewUuid)};
-				if (viewMatrix)
-				{
-					camera->setViewMatrix(viewMatrix);
-				}
-
+				//memcpy(&viewUuidSize, msg + messageOffset, STSIZE);
+				//messageOffset += STSIZE;
+				//viewUuid.resize(viewUuidSize);
+				//memcpy(&viewUuid[0], msg + messageOffset, viewUuidSize);
+				//messageOffset += viewUuidSize;
+				//
+				//NODETYPES::Node* viewMatrix {this->findNode(viewUuid)};
+				//if (viewMatrix)
+				//{
+				//	camera->setViewMatrix(viewMatrix);
+				//}
 			}
 		}
 	}
@@ -731,11 +735,11 @@ void DX::addParent(char* msg)
 				NODETYPES::PointLight* pointLight {dynamic_cast<NODETYPES::PointLight*>(node)};
 				pointLight->setTransform(parentNode);
 			}
-			else if (type == "camera")
-			{
-				NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
-				camera->setViewMatrix(parentNode);
-			}
+			//else if (type == "camera")
+			//{
+			//	NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
+			//	camera->setViewMatrix(parentNode);
+			//}
 		}
 	}
 }
@@ -781,11 +785,11 @@ void DX::removeParent(char* msg)
 				NODETYPES::PointLight* pointLight{ dynamic_cast<NODETYPES::PointLight*>(node) };
 				pointLight->removeTransformReference();
 			}
-			else if (type == "camera")
-			{
-				NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
-				camera->removeViewMatrixReference();
-			}
+			//else if (type == "camera")
+			//{
+			//	NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
+			//	camera->removeViewMatrixReference();
+			//}
 		}
 	}
 }
@@ -806,6 +810,11 @@ void DX::setActiveCamera(char* msg) {
 		NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
 		if (camera)
 		{
+			DirectX::XMMATRIX viewMat{};
+			memcpy(&viewMat, msg + messageOffset, sizeof(DirectX::XMMATRIX));
+			messageOffset += sizeof(DirectX::XMMATRIX);
+
+			camera->setViewMatrix(viewMat);
 			this->activeCamera = camera;
 		}
 	}
@@ -935,10 +944,10 @@ void DX::deallocateNode(char* msg) {
 			NODETYPES::PointLight* pointLight {dynamic_cast<NODETYPES::PointLight*>(node)};
 			pointLight->clearTransformReference();
 		}
-		else if (node->getType() == "camera") {
-			NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
-			camera->clearViewMatrixReference();
-		}
+		//else if (node->getType() == "camera") {
+		//	NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
+		//	camera->clearViewMatrixReference();
+		//}
 		else if (node->getType() == "shadingEngine") {
 			NODETYPES::ShadingEngine* shadingEngine {dynamic_cast<NODETYPES::ShadingEngine*>(node)};
 			shadingEngine->clearMaterials();
@@ -1433,8 +1442,8 @@ void DX::setViewPort()
 		.TopLeftY = 0,
 		.Width = WIDTH,
 		.Height = HEIGHT,
-		.MinDepth = 0.f,
-		.MaxDepth = 1.f
+		.MinDepth = 0.0f,
+		.MaxDepth = 1.0f
 	};
 
 	this->gDeviceContext->RSSetViewports(1, &vp);
@@ -1575,14 +1584,14 @@ HRESULT DX::CreateRasterizerState()
 	D3D11_RASTERIZER_DESC rasDesc{
 		.FillMode {D3D11_FILL_SOLID},
 		.CullMode = {D3D11_CULL_NONE},
-		.FrontCounterClockwise {},
-		.DepthBias {},
-		.DepthBiasClamp {},
-		.SlopeScaledDepthBias {},
+		.FrontCounterClockwise {false},
+		.DepthBias {0},
+		.DepthBiasClamp {0.f},
+		.SlopeScaledDepthBias {0},
 		.DepthClipEnable {true},
 		.ScissorEnable {true},
-		.MultisampleEnable {},
-		.AntialiasedLineEnable {}
+		.MultisampleEnable {false},
+		.AntialiasedLineEnable {false}
 	};
 	return this->gDevice->CreateRasterizerState(&rasDesc, this->gRasterizerState.GetAddressOf());
 }
@@ -1782,7 +1791,6 @@ void DX::clearRender()
 	float clearColor[] = { 0.f, 0.f, 0.0f, 1.0f };
 
 	this->gDeviceContext->ClearRenderTargetView(this->gBackbufferRTV[this->currentFrame].Get(), clearColor);
-	this->gDeviceContext->ClearDepthStencilView(this->gDepthStencilView[this->currentFrame].Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 }
 void DX::updateGBufferShaders(size_t i)
 {
@@ -1841,7 +1849,7 @@ void DX::UpdateCameraBuffers()
 	D3D11_MAPPED_SUBRESOURCE dataPtr {};
 
 	this->gDeviceContext->Map(this->cameraBuffer[0].Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
-	memcpy(dataPtr.pData, this->activeCamera->getViewMatix(), sizeof(DirectX::XMMATRIX));
+	memcpy(dataPtr.pData, this->activeCamera->getViewMatrix(), sizeof(DirectX::XMMATRIX));
 	this->gDeviceContext->Unmap(this->cameraBuffer[0].Get(), 0);
 	ZeroMemory(&dataPtr, sizeof(dataPtr));
 
@@ -1901,6 +1909,8 @@ void DX::ClearGBufferTargets()
 	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[0].Get(), clearColor);
 	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[1].Get(), clearColor2);
 	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[2].Get(), clearColor3);
+	
+	this->gDeviceContext->ClearDepthStencilView(this->gDepthStencilView[this->currentFrame].Get(), D3D11_CLEAR_DEPTH /*| D3D11_CLEAR_STENCIL*/, 1.0f, 0);
 }
 void DX::Render()
 {

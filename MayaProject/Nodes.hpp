@@ -53,7 +53,7 @@ namespace NODETYPES
 		ComPtr<ID3D11Buffer> matrixBuffer {};
 
 		const DirectX::XMFLOAT4X4 DTFMatrix(const double matrix[4][4]) const {
-			DirectX::XMFLOAT4X4 fMatrix{};
+			DirectX::XMFLOAT4X4 fMatrix {};
 			fMatrix._11 = static_cast<float>(matrix[0][0]);
 			fMatrix._12 = static_cast<float>(matrix[0][1]);
 			fMatrix._13 = static_cast<float>(matrix[0][2]);
@@ -544,7 +544,8 @@ namespace NODETYPES
 	class Camera : public Node
 	{
 	private:
-		NODETYPES::Node* viewMatrix{};
+		//NODETYPES::Node* viewMatrix{};
+		DirectX::XMMATRIX viewMatrix{};
 		DirectX::XMMATRIX projectionMatrix{};
 		ComPtr<ID3D11Buffer> projectionBuffer {};
 
@@ -552,14 +553,18 @@ namespace NODETYPES
 		Camera(const std::string& name, const std::string& uuid, const std::string type) { this->setName(name); this->setUuid(uuid); this->setType(type); };
 		~Camera() {};
 
-		void setProjectionMatrix(const double projMat[4][4]) {
-			DirectX::XMFLOAT4X4 tempMat{
-			static_cast<float>(projMat[0][0]), static_cast<float>(projMat[0][1]), static_cast<float>(projMat[0][2]), static_cast<float>(projMat[0][3]),
-			static_cast<float>(projMat[1][0]), static_cast<float>(projMat[1][1]), static_cast<float>(projMat[1][2]), static_cast<float>(projMat[1][3]),
-			static_cast<float>(projMat[2][0]), static_cast<float>(projMat[2][1]), static_cast<float>(projMat[2][2]), static_cast<float>(projMat[2][3]),
-			static_cast<float>(projMat[3][0]), static_cast<float>(projMat[3][1]), static_cast<float>(projMat[3][2]), static_cast<float>(projMat[3][3])
+		void setProjectionMatrix(const double projMat[4][4])
+		{
+			DirectX::XMFLOAT4X4 mat{
+				static_cast<float>(projMat[0][0]), static_cast<float>(projMat[0][1]), static_cast<float>(projMat[0][2]), static_cast<float>(projMat[0][3]),
+				static_cast<float>(projMat[1][0]), static_cast<float>(projMat[1][1]), static_cast<float>(projMat[1][2]), static_cast<float>(projMat[1][3]),
+				static_cast<float>(projMat[2][0]), static_cast<float>(projMat[2][1]), static_cast<float>(projMat[2][2]), static_cast<float>(projMat[2][3]),
+				static_cast<float>(projMat[3][0]), static_cast<float>(projMat[3][1]), static_cast<float>(projMat[3][2]), static_cast<float>(projMat[3][3]),
 			};
-			this->projectionMatrix = DirectX::XMLoadFloat4x4(&tempMat);
+			this->projectionMatrix = DirectX::XMLoadFloat4x4(&mat);
+		};
+		void setProjectionMatrix(const DirectX::XMMATRIX projMat) {
+			this->projectionMatrix = projMat;
 		};
 		void setupBuffers(ID3D11Device* gDevice)
 		{
@@ -576,33 +581,40 @@ namespace NODETYPES
 			hr = gDevice->CreateBuffer(&mBufferDesc, &mData, &this->projectionBuffer);
 			if (FAILED(hr)) { exit(-1); }
 		}
-		void setViewMatrix(NODETYPES::Node* node) { 
-			node->addNewReferenceBy(this, "viewMatrix");
-			this->viewMatrix = node; 
+		//void setViewMatrix(NODETYPES::Node* node) { 
+		//	node->addNewReferenceBy(this, "viewMatrix");
+		//	this->viewMatrix = node; 
+		//}
+		void setViewMatrix(DirectX::XMMATRIX viewMatrix)
+		{
+			this->viewMatrix = viewMatrix;
 		}
 
 		DirectX::XMMATRIX* getProjectionMatrix() { return &this->projectionMatrix; };
-		DirectX::XMMATRIX* getViewMatix() {
-			if (this->viewMatrix == nullptr)
-			{
-				std::cout << "No view matrix transform";
-				return nullptr;
-			}
-			else
-			{
-				return dynamic_cast<NODETYPES::Transform*>(this->viewMatrix)->getWorldMatrix();
-			}
+		//DirectX::XMMATRIX* getViewMatix() {
+		//	if (this->viewMatrix == nullptr)
+		//	{
+		//		std::cout << "No view matrix transform";
+		//		return nullptr;
+		//	}
+		//	else
+		//	{
+		//		return dynamic_cast<NODETYPES::Transform*>(this->viewMatrix)->getWorldMatrix();
+		//	}
+		//};
+		DirectX::XMMATRIX* getViewMatrix() {
+			return &this->viewMatrix;
 		};
 
-		void clearViewMatrixReference() {
-			viewMatrix->removeReference(this->getUuid());
-			viewMatrix = nullptr;
-		}
+		//void clearViewMatrixReference() {
+		//	viewMatrix->removeReference(this->getUuid());
+		//	viewMatrix = nullptr;
+		//}
 
-		void removeViewMatrixReference() { 
-			this->viewMatrix->removeReference(this->getUuid());
-			this->viewMatrix = nullptr;
-		}
+		//void removeViewMatrixReference() { 
+		//	this->viewMatrix->removeReference(this->getUuid());
+		//	this->viewMatrix = nullptr;
+		//}
 	};
 
 	class Texture : public Node

@@ -20,12 +20,12 @@ void NODETYPES::Node::removeReferences()
 				mesh->removeShadingEngine(this->uuid);
 			}
 		}
-		else if (type == "camera") {
-			NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(this->referredBy[i].first) };
-			if (this->type == "transform") {
-				camera->removeViewMatrixReference();
-			}
-		}
+		//else if (type == "camera") {
+		//	NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(this->referredBy[i].first) };
+		//	if (this->type == "transform") {
+		//		camera->removeViewMatrixReference();
+		//	}
+		//}
 		else if (type == "pointLight") {
 			NODETYPES::PointLight* pointLight{ dynamic_cast<NODETYPES::PointLight*>(this->referredBy[i].first) };
 			if (this->type == "transform") {

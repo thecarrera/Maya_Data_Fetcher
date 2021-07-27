@@ -33,18 +33,18 @@ PS_OUT PS_main(in PS_IN input)
     normMap = float3(0.5f, 0.5f, 0.5f);
     normMap = 2.0f * normMap - 1.0f;
     float3 N = normalize(input.Norm);
-    float3 T = normalize(input.oTangent - dot(input.oTangent, N) * N);
+    float3 T = normalize(input.oTangent.xyz - dot(input.oTangent.xyz, N) * N);
     float3 B = cross(N, T);
     float3x3 TBN = { T, B, N };
     float3 newNormal = mul(normMap, TBN);
     
-    output.DiffuseAlbedo    = float4(diffuseAlbedo, 1.0f);
-    output.Normal           = float4(newNormal, 1.0f);
-    output.Position         = input.wPos;
+    //output.DiffuseAlbedo    = float4(diffuseAlbedo, 1.0f);
+    //output.Normal           = float4(newNormal, 1.0f);
+    //output.Position         = input.wPos;
     
-    //output.DiffuseAlbedo = float4(1.f, 0.f, 0.f, 1.f);
-    //output.Normal = float4(0.f, 1.f, 0.f, 1.f);
-    //output.Position = float4(0.f, 0.f, 1.f, 1.f);
+    output.DiffuseAlbedo = float4(1.f, 0.f, 0.f, 1.f);
+    output.Normal = float4(0.f, 1.f, 0.f, 1.f);
+    output.Position = float4(0.f, 0.f, 1.f, 1.f);
     
     return output;
 }
