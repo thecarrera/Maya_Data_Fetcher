@@ -118,15 +118,16 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		double matrix[4][4]{};
-		memcpy(&matrix, msg + messageOffset, sizeof(double[4][4]));
-		messageOffset += sizeof(double[4][4]);
 		
 		if (attr == ComLib::ATTRIBUTE_TYPE::MATRIX)
 		{
 			NODETYPES::Transform* transform {dynamic_cast<NODETYPES::Transform*>(node)};
 			if (transform)
 			{
+				double matrix[4][4]{};
+				memcpy(&matrix, msg + messageOffset, sizeof(double[4][4]));
+				messageOffset += sizeof(double[4][4]);
+				
 				double worldMatrix[4][4] {};
 				memcpy(&worldMatrix, msg + messageOffset, sizeof(double[4][4]));
 				messageOffset += sizeof(double[4][4]);
@@ -162,27 +163,27 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 			NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
 			if (camera)
 			{
-				//DirectX::XMMATRIX matrix{};
-				//memcpy(&matrix, msg + messageOffset, sizeof(matrix));
-				//messageOffset += sizeof(matrix);
+				DirectX::XMMATRIX matrix{};
+				memcpy(&matrix, msg + messageOffset, sizeof(matrix));
+				messageOffset += sizeof(matrix);
 
 				camera->setProjectionMatrix(matrix);
 				camera->setupBuffers(this->gDevice.Get());
 
-				//size_t viewUuidSize		{};
-				//std::string viewUuid	{};
+				size_t viewUuidSize		{};
+				std::string viewUuid	{};
 
-				//memcpy(&viewUuidSize, msg + messageOffset, STSIZE);
-				//messageOffset += STSIZE;
-				//viewUuid.resize(viewUuidSize);
-				//memcpy(&viewUuid[0], msg + messageOffset, viewUuidSize);
-				//messageOffset += viewUuidSize;
-				//
-				//NODETYPES::Node* viewMatrix {this->findNode(viewUuid)};
-				//if (viewMatrix)
-				//{
-				//	camera->setViewMatrix(viewMatrix);
-				//}
+				memcpy(&viewUuidSize, msg + messageOffset, STSIZE);
+				messageOffset += STSIZE;
+				viewUuid.resize(viewUuidSize);
+				memcpy(&viewUuid[0], msg + messageOffset, viewUuidSize);
+				messageOffset += viewUuidSize;
+				
+				NODETYPES::Node* viewMatrix {this->findNode(viewUuid)};
+				if (viewMatrix)
+				{
+					camera->setViewMatrix(viewMatrix);
+				}
 			}
 		}
 	}
@@ -735,11 +736,11 @@ void DX::addParent(char* msg)
 				NODETYPES::PointLight* pointLight {dynamic_cast<NODETYPES::PointLight*>(node)};
 				pointLight->setTransform(parentNode);
 			}
-			//else if (type == "camera")
-			//{
-			//	NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
-			//	camera->setViewMatrix(parentNode);
-			//}
+			else if (type == "camera")
+			{
+				NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
+				camera->setViewMatrix(parentNode);
+			}
 		}
 	}
 }
@@ -785,11 +786,11 @@ void DX::removeParent(char* msg)
 				NODETYPES::PointLight* pointLight{ dynamic_cast<NODETYPES::PointLight*>(node) };
 				pointLight->removeTransformReference();
 			}
-			//else if (type == "camera")
-			//{
-			//	NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
-			//	camera->removeViewMatrixReference();
-			//}
+			else if (type == "camera")
+			{
+				NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
+				camera->removeViewMatrixReference();
+			}
 		}
 	}
 }
@@ -810,11 +811,11 @@ void DX::setActiveCamera(char* msg) {
 		NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
 		if (camera)
 		{
-			DirectX::XMMATRIX viewMat{};
-			memcpy(&viewMat, msg + messageOffset, sizeof(DirectX::XMMATRIX));
-			messageOffset += sizeof(DirectX::XMMATRIX);
+			//DirectX::XMMATRIX viewMat{};
+			//memcpy(&viewMat, msg + messageOffset, sizeof(DirectX::XMMATRIX));
+			//messageOffset += sizeof(DirectX::XMMATRIX);
 
-			camera->setViewMatrix(viewMat);
+			//camera->setViewMatrix(viewMat);
 			this->activeCamera = camera;
 		}
 	}
@@ -944,10 +945,10 @@ void DX::deallocateNode(char* msg) {
 			NODETYPES::PointLight* pointLight {dynamic_cast<NODETYPES::PointLight*>(node)};
 			pointLight->clearTransformReference();
 		}
-		//else if (node->getType() == "camera") {
-		//	NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
-		//	camera->clearViewMatrixReference();
-		//}
+		else if (node->getType() == "camera") {
+			NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
+			camera->clearViewMatrixReference();
+		}
 		else if (node->getType() == "shadingEngine") {
 			NODETYPES::ShadingEngine* shadingEngine {dynamic_cast<NODETYPES::ShadingEngine*>(node)};
 			shadingEngine->clearMaterials();
