@@ -113,15 +113,15 @@ bool ComLib::send()
 	size_t pad = (blockCount * 64) - (this->packageSize + sizeof(HEADER));
 	size_t totalBlockSize = this->packageSize + sizeof(HEADER) + pad;
 
-	db = "blockCount: ";
-	db += static_cast<unsigned int>(blockCount);
-	MGlobal::displayInfo(db);
-	db = "pad: ";
-	db += static_cast<unsigned int>(pad);
-	MGlobal::displayInfo(db);
-	db = "totalBlockSize: ";
-	db += static_cast<unsigned int>(totalBlockSize);
-	MGlobal::displayInfo(db);
+	//db = "blockCount: ";
+	//db += static_cast<unsigned int>(blockCount);
+	//MGlobal::displayInfo(db);
+	//db = "pad: ";
+	//db += static_cast<unsigned int>(pad);
+	//MGlobal::displayInfo(db);
+	//db = "totalBlockSize: ";
+	//db += static_cast<unsigned int>(totalBlockSize);
+	//MGlobal::displayInfo(db);
 
 
 	if (*this->freeMemSize > totalBlockSize)
@@ -208,23 +208,23 @@ void ComLib::addToPackage(char* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYP
 		tempMsg.resize(sizeof(HEADER) + length);
 	}
 
-	debugString = packageSize;
-	MGlobal::displayInfo(debugString);
+	//debugString = packageSize;
+	//MGlobal::displayInfo(debugString);
 
 	this->header.msgId = msgType;
 	this->header.attrID = attrType;
 	this->header.msgSeq++;
 	this->header.msgLength = length + pad;
 	
-	debugString = "tempOffset: ";
-	debugString += static_cast<unsigned int>(tempMessageOffset);
-	MGlobal::displayInfo(debugString);
-	debugString = "message Length: ";
-	debugString += static_cast<unsigned int>(length);
-	MGlobal::displayInfo(debugString);
-	debugString = "tempMsg size: ";
-	debugString += static_cast<unsigned int>(tempMsg.size());
-	MGlobal::displayInfo(debugString);
+	//debugString = "tempOffset: ";
+	//debugString += static_cast<unsigned int>(tempMessageOffset);
+	//MGlobal::displayInfo(debugString);
+	//debugString = "message Length: ";
+	//debugString += static_cast<unsigned int>(length);
+	//MGlobal::displayInfo(debugString);
+	//debugString = "tempMsg size: ";
+	//debugString += static_cast<unsigned int>(tempMsg.size());
+	//MGlobal::displayInfo(debugString);
 
 
 	memcpy(tempMsg.data() + tempMessageOffset, &header, sizeof(HEADER));
@@ -237,16 +237,17 @@ void ComLib::addToPackage(char* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYP
 	}
 	
 
-	debugString = tempMsg.size();
-	MGlobal::displayInfo(debugString);
+	//debugString = tempMsg.size();
+	//MGlobal::displayInfo(debugString);
 
 	this->mutex.Lock();
 	this->package.resize(this->packageSize + totalBlockSize);
 	memcpy(this->package.data(), tempMsg.data(), tempMessageOffset);
 	this->packageSize = this->packageSize + totalBlockSize;
 	this->mutex.Unlock();
-	debugString = "Package Size: ";
-	debugString += static_cast<unsigned int>(packageSize);
-	MGlobal::displayInfo(debugString);
+	//debugString = "Package Size: ";
+	//debugString += static_cast<unsigned int>(packageSize);
+	//MGlobal::displayInfo(debugString);
+
 }
 

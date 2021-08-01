@@ -128,7 +128,6 @@
 #include "maya_includes.h"
 #include "ComLib.h"
 #include <array>
-#include <DirectXMath.h>
 
 MCallbackIdArray myCallbackArray;
 ComLib comlib("sharedFileMap", (25ULL << 23ULL)); //200MB
@@ -302,7 +301,7 @@ void pPrintMatrix(DirectX::XMMATRIX mat)
 }
 
 //General Micro Data
-void pSendActiveCamera(MMatrix& viewMat, MFnDagNode& camDAG)
+void pSendActiveCamera(MFnDagNode& camDAG)
 {
 	MString debugString {};
 	std::string uuid {camDAG.uuid().asString().asChar()};
@@ -310,41 +309,14 @@ void pSendActiveCamera(MMatrix& viewMat, MFnDagNode& camDAG)
 	std::vector<char> msg {};
 	size_t messageSize {};
 	
-	MFnCamera cam {camDAG.object()};
-	MGlobal::displayInfo(cam.name().asChar());
-
-	//viewMat = viewMat.transpose();
-
-	//DirectX::XMMATRIX viewMatrix{
-	//	static_cast<float>(viewMat[0][0]), static_cast<float>(viewMat[0][1]), static_cast<float>(viewMat[0][2]) * (-1.0f), static_cast<float>(viewMat[0][3]),
-	//	static_cast<float>(viewMat[1][0]), static_cast<float>(viewMat[1][1]), static_cast<float>(viewMat[1][2]) * (-1.0f), static_cast<float>(viewMat[1][3]),
-	//	static_cast<float>(viewMat[2][0]), static_cast<float>(viewMat[2][1]), static_cast<float>(viewMat[2][2]) * (-1.0f), static_cast<float>(viewMat[2][3]),
-	//	static_cast<float>(viewMat[3][0]), static_cast<float>(viewMat[3][1]), static_cast<float>(viewMat[3][2]) * (-1.0f), static_cast<float>(viewMat[3][3])
-	//};
-
-	//MPoint camEyePos	{cam.eyePoint(MSpace::kWorld)};
-	//MVector camLookTo	{cam.viewDirection(MSpace::kWorld)};
-	//MVector camUpVec	{cam.upDirection(MSpace::kWorld)};
-
-	//DirectX::FXMVECTOR eyePos	{camEyePos.x, camEyePos.y, camEyePos.z};
-	//DirectX::FXMVECTOR lookTo	{camLookTo.x, camLookTo.y, camLookTo.z};
-	//DirectX::FXMVECTOR upVec	{camUpVec.x, camUpVec.y, camUpVec.z};
-
-	//DirectX::XMMATRIX viewMatrix {DirectX::XMMatrixLookToRH(eyePos, lookTo, upVec)};
-
-	//pPrintMatrix(viewMatrix);
-
 	msg.resize(
 		STSIZE + 
-		uuidSize /*+
-		sizeof(DirectX::XMMATRIX)*/
+		uuidSize
 	);
 	memcpy(msg.data(), &uuidSize, STSIZE);
 	messageSize += STSIZE;
 	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 	messageSize += uuidSize;
-	//memcpy(msg.data() + messageSize, &viewMatrix, sizeof(DirectX::XMMATRIX));
-	//messageSize += sizeof(DirectX::XMMATRIX);
 	
 	comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::ACTIVECAM, ComLib::ATTRIBUTE_TYPE::NONE, messageSize);
 }
@@ -485,7 +457,7 @@ void pSendMatrixData(MObject& object)
 		objectMat.matrix[3][2],
 		objectMat.matrix[3][3]
 	};
-	size_t matrixSize {sizeof(double[4][4])};
+	size_t matrixSize {sizeof(objectMatrix)};
 	//pPrintMatrix(objectMatrix);
 	
 	MMatrix worldMat {};
@@ -589,26 +561,6 @@ void pSendMatrixData(MObject& object)
 		memcpy(msg.data() + messageSize, &parentUuid[0], parentUuidSize);
 		messageSize += parentUuidSize;
 	}
-
-	debugString = "STSIZE * 2: ";
-	debugString += static_cast<UINT>(STSIZE * 2);
-	MGlobal::displayInfo(debugString);
-	debugString = "uuidSize: ";
-	debugString += static_cast<UINT>(uuidSize);
-	MGlobal::displayInfo(debugString);
-	debugString = "matrixSize: ";
-	debugString += static_cast<UINT>(matrixSize);
-	MGlobal::displayInfo(debugString);
-	debugString = "matrixSize * 2: ";
-	debugString += static_cast<UINT>((matrixSize + matrixSize));
-	MGlobal::displayInfo(debugString);
-	debugString = "parentUuidSize: ";
-	debugString += static_cast<UINT>(parentUuidSize);
-	MGlobal::displayInfo(debugString);
-	debugString = "messageSize: ";
-	debugString += static_cast<UINT>(messageSize);
-	MGlobal::displayInfo(debugString);
-
 	comlib.addToPackage(
 		msg.data(), 
 		ComLib::MSG_TYPE::UPDATEVALUES, 
@@ -624,122 +576,55 @@ void pSendProjectionMatrix(MObject& object)
 	MFnCamera cam {object};
 	std::string uuid {cam.uuid().asString().asChar()};
 	size_t uuidSize {uuid.size()};
-	
-	MFnDependencyNode parentNode {cam.parent(0)};
-	std::string viewUuid {parentNode.uuid().asString().asChar()};
+
+	MFnDependencyNode viewMatrix {cam.parent(0)};
+	std::string viewUuid {viewMatrix.uuid().asString().asChar()};
 	size_t viewUuidSize {viewUuid.size()};
 
-	MFloatMatrix projectionMat {cam.projectionMatrix()};
-	//projectionMat = projectionMat.transpose();
+	MMatrix projectionMat {cam.projectionMatrix().matrix};
+	double projMat[4][4] {
+		cam.projectionMatrix().matrix[0][0],
+		cam.projectionMatrix().matrix[1][0],
+		cam.projectionMatrix().matrix[2][0],
+		cam.projectionMatrix().matrix[3][0],
 
-	//double projMat[4][4] {
-	//	projectionMat.matrix[0][0], // 1/AspectRatio * tan(FOVY / 2) is correct.
-	//	projectionMat.matrix[0][1],
-	//	projectionMat.matrix[0][2], 
-	//	projectionMat.matrix[0][3],
-	//
-	//	projectionMat.matrix[1][0],
-	//	projectionMat.matrix[1][1], // 1/tan(FOVY / 2) grants incorrect values. Perhaps internal maya calculations?
-	//	projectionMat.matrix[1][2],
-	//	projectionMat.matrix[1][3],
-	//
-	//	projectionMat.matrix[2][0],
-	//	projectionMat.matrix[2][1],
-	//	projectionMat.matrix[2][2],
-	//	projectionMat.matrix[2][3] * (-1.0f),
-	//
-	//	projectionMat.matrix[3][0],
-	//	projectionMat.matrix[3][1],
-	//	projectionMat.matrix[3][2] * (-1.0f), // -nf/f-n grants incorrect values. Perhaps internal maya calculations?
-	//	projectionMat.matrix[3][3]
-	//};
+		cam.projectionMatrix().matrix[0][1],
+		cam.projectionMatrix().matrix[1][1],
+		cam.projectionMatrix().matrix[2][1],
+		cam.projectionMatrix().matrix[3][1],
 
-	debugString = "Name: ";
-	debugString += cam.name();
-	MGlobal::displayInfo(debugString);
-	debugString = "is Ortho: ";
-	debugString += cam.isOrtho();
-	MGlobal::displayInfo(debugString);
-	debugString = "AR: ";
-	debugString += cam.aspectRatio();
-	MGlobal::displayInfo(debugString);
-	debugString = "FovY: ";
-	debugString += cam.verticalFieldOfView();
-	MGlobal::displayInfo(debugString);
-	debugString = "FovX: ";
-	debugString += cam.horizontalFieldOfView();
-	MGlobal::displayInfo(debugString);
+		cam.projectionMatrix().matrix[0][2],
+		cam.projectionMatrix().matrix[1][2],
+		cam.projectionMatrix().matrix[2][2],
+		cam.projectionMatrix().matrix[3][2],
 
-	//pPrintMatrix(projMat);
-	
-	float HFOV		{static_cast<float>(cam.horizontalFieldOfView())};
-	float VFOV		{static_cast<float>(cam.verticalFieldOfView())};
-	float FOV		{HFOV * VFOV};
-	float ARO		{static_cast<float>(cam.aspectRatio())};
-	float nPlane	{static_cast<float>(cam.nearClippingPlane())};
-	float fPlane	{static_cast<float>(cam.farClippingPlane())};
-	
-	DirectX::XMMATRIX projMatrix{};
-	if (cam.isOrtho())
-	{
-		float tangent = tanf(VFOV/2);
-		float height = (0.1f * tangent) * 2.0f;
-		float width = (height * ARO) * 2.0f;
-	
-		debugString = "tan: ";
-		debugString += tangent;
-		MGlobal::displayInfo(debugString);
-		debugString = "halfHeight: ";
-		debugString += height;
-		MGlobal::displayInfo(debugString);
-		debugString = "halfWidth: ";
-		debugString += width;
-		MGlobal::displayInfo(debugString);
-	
-		projMatrix = DirectX::XMMatrixOrthographicLH(width, height, nPlane, fPlane);
-		//projMatrix = DirectX::XMMatrixOrthographicOffCenterLH(0, width, height, 0, nPlane, fPlane);
-	}
-	else 
-	{
-		projMatrix = DirectX::XMMatrixPerspectiveFovLH(VFOV, ARO, nPlane, fPlane);
-	}
-	
-	pPrintMatrix(projMatrix);
+		cam.projectionMatrix().matrix[0][3],
+		cam.projectionMatrix().matrix[1][3],
+		cam.projectionMatrix().matrix[2][3],
+		cam.projectionMatrix().matrix[3][3]
+	};
 
 	std::vector<char> msg {};
 	size_t messageSize {};
 	msg.resize(
 		(STSIZE * 2) +
 		uuidSize +
-		sizeof(DirectX::XMMATRIX) + 
+		sizeof(projMat) +
 		viewUuidSize
 	);
 	memcpy(msg.data(), &uuidSize, STSIZE);
 	messageSize += STSIZE;
 	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 	messageSize += uuidSize;
-	memcpy(msg.data() + messageSize, &projMatrix, sizeof(DirectX::XMMATRIX));
-	messageSize += sizeof(DirectX::XMMATRIX);
-	memcpy(msg.data(), &viewUuid, STSIZE);
+
+	memcpy(msg.data() + messageSize, &projMat, sizeof(projMat));
+	messageSize += sizeof(projMat);
+
+	memcpy(msg.data() + messageSize, &viewUuidSize, STSIZE);
 	messageSize += STSIZE;
 	memcpy(msg.data() + messageSize, &viewUuid[0], viewUuidSize);
 	messageSize += viewUuidSize;
 
-	debugString = "STSIZE * 2: ";
-	debugString += static_cast<UINT>(STSIZE * 2);
-	MGlobal::displayInfo(debugString);
-	debugString = "uuidSize: ";
-	debugString += static_cast<UINT>(uuidSize);
-	MGlobal::displayInfo(debugString);
-	debugString = "matrixSize * 2: ";
-	debugString += static_cast<UINT>(sizeof(DirectX::XMMATRIX));
-	MGlobal::displayInfo(debugString);
-	debugString = "parentUuidSize: ";
-	debugString += static_cast<UINT>(viewUuidSize);
-	MGlobal::displayInfo(debugString);
-	debugString = "messageSize: ";
-	debugString += static_cast<UINT>(messageSize);
-	MGlobal::displayInfo(debugString);
 
 	comlib.addToPackage(
 		msg.data(), 
@@ -3223,9 +3108,7 @@ void pGetExistingScene()
 		}
 	}
 	
-	MMatrix viewMatrix{};
-	sceneView.modelViewMatrix(viewMatrix);
-	pSendActiveCamera(viewMatrix, camDAG);
+	pSendActiveCamera(camDAG);
 }
 
 void preRenderCallback(const MString& str, void* clientData)
@@ -3280,10 +3163,7 @@ void preRenderCallback(const MString& str, void* clientData)
 	else
 	{
 		//MGlobal::displayInfo("6.2");
-		MMatrix viewMatrix {};
-		sceneView.modelViewMatrix(viewMatrix);
-
-		pSendActiveCamera(viewMatrix, camDAG);
+		pSendActiveCamera(camDAG);
 		comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTREND, messageSize);
 		//MGlobal::displayInfo("6.3");
 		while (sending == false)
