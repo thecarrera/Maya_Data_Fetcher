@@ -118,16 +118,15 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
+		double matrix[4][4]{};
+		memcpy(&matrix, msg + messageOffset, sizeof(double[4][4]));
+		messageOffset += sizeof(double[4][4]);
 		
 		if (attr == ComLib::ATTRIBUTE_TYPE::MATRIX)
 		{
 			NODETYPES::Transform* transform {dynamic_cast<NODETYPES::Transform*>(node)};
 			if (transform)
 			{
-				double matrix[4][4]{};
-				memcpy(&matrix, msg + messageOffset, sizeof(double[4][4]));
-				messageOffset += sizeof(double[4][4]);
-				
 				double worldMatrix[4][4] {};
 				memcpy(&worldMatrix, msg + messageOffset, sizeof(double[4][4]));
 				messageOffset += sizeof(double[4][4]);
@@ -163,10 +162,6 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 			NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
 			if (camera)
 			{
-				DirectX::XMMATRIX matrix{};
-				memcpy(&matrix, msg + messageOffset, sizeof(matrix));
-				messageOffset += sizeof(matrix);
-
 				camera->setProjectionMatrix(matrix);
 				camera->setupBuffers(this->gDevice.Get());
 
@@ -178,12 +173,13 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 				viewUuid.resize(viewUuidSize);
 				memcpy(&viewUuid[0], msg + messageOffset, viewUuidSize);
 				messageOffset += viewUuidSize;
-				
+
 				NODETYPES::Node* viewMatrix {this->findNode(viewUuid)};
 				if (viewMatrix)
 				{
 					camera->setViewMatrix(viewMatrix);
 				}
+
 			}
 		}
 	}
@@ -811,11 +807,6 @@ void DX::setActiveCamera(char* msg) {
 		NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
 		if (camera)
 		{
-			//DirectX::XMMATRIX viewMat{};
-			//memcpy(&viewMat, msg + messageOffset, sizeof(DirectX::XMMATRIX));
-			//messageOffset += sizeof(DirectX::XMMATRIX);
-
-			//camera->setViewMatrix(viewMat);
 			this->activeCamera = camera;
 		}
 	}
@@ -1585,14 +1576,14 @@ HRESULT DX::CreateRasterizerState()
 	D3D11_RASTERIZER_DESC rasDesc{
 		.FillMode {D3D11_FILL_SOLID},
 		.CullMode = {D3D11_CULL_NONE},
-		.FrontCounterClockwise {false},
-		.DepthBias {0},
-		.DepthBiasClamp {0.f},
-		.SlopeScaledDepthBias {0},
+		.FrontCounterClockwise {},
+		.DepthBias {},
+		.DepthBiasClamp {},
+		.SlopeScaledDepthBias {},
 		.DepthClipEnable {true},
 		.ScissorEnable {true},
-		.MultisampleEnable {false},
-		.AntialiasedLineEnable {false}
+		.MultisampleEnable {},
+		.AntialiasedLineEnable {}
 	};
 	return this->gDevice->CreateRasterizerState(&rasDesc, this->gRasterizerState.GetAddressOf());
 }

@@ -67,6 +67,7 @@ struct MeshData
 		std::vector<int> uvDrawOrder;
 	};
 
+
 	std::string meshUuid = "none";
 	std::string meshName = "none";
 	std::string meshTransform = "none";
