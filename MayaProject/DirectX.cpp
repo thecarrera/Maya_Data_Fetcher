@@ -117,16 +117,16 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 
 	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
-	{
-		double matrix[4][4]{};
-		memcpy(&matrix, msg + messageOffset, sizeof(double[4][4]));
-		messageOffset += sizeof(double[4][4]);
-		
+	{		
 		if (attr == ComLib::ATTRIBUTE_TYPE::MATRIX)
 		{
 			NODETYPES::Transform* transform {dynamic_cast<NODETYPES::Transform*>(node)};
 			if (transform)
 			{
+				double matrix[4][4]{};
+				memcpy(&matrix, msg + messageOffset, sizeof(double[4][4]));
+				messageOffset += sizeof(double[4][4]);
+
 				double worldMatrix[4][4] {};
 				memcpy(&worldMatrix, msg + messageOffset, sizeof(double[4][4]));
 				messageOffset += sizeof(double[4][4]);
@@ -162,7 +162,11 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 			NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
 			if (camera)
 			{
-				camera->setProjectionMatrix(matrix);
+				double projMat[4][4] {};
+				memcpy(&projMat, msg + messageOffset, sizeof(projMat));
+				messageOffset += sizeof(projMat);
+
+				camera->setProjectionMatrix(projMat);
 				camera->setupBuffers(this->gDevice.Get());
 
 				size_t viewUuidSize		{};
@@ -1421,9 +1425,9 @@ void DX::setScissorRect()
 {
 	D3D11_RECT rects[1];
 	rects[0].left = 0;
-	rects[0].right = WIDTH;
+	rects[0].right = (long)WIDTH;
 	rects[0].top = 0;
-	rects[0].bottom = HEIGHT;
+	rects[0].bottom = (long)HEIGHT;
 
 	this->gDeviceContext->RSSetScissorRects(1, rects);
 }

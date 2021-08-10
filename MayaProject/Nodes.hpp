@@ -562,6 +562,9 @@ namespace NODETYPES
 			};
 			this->projectionMatrix = DirectX::XMLoadFloat4x4(&mat);
 		};
+		void setProjectionMatrix(const DirectX::XMMATRIX projMat) {
+			this->projectionMatrix = projMat;
+		};
 		void setupBuffers(ID3D11Device* gDevice)
 		{
 			HRESULT hr{};
@@ -587,7 +590,8 @@ namespace NODETYPES
 		//}
 
 		DirectX::XMMATRIX* getProjectionMatrix() { return &this->projectionMatrix; };
-		DirectX::XMMATRIX* getViewMatix() {
+		DirectX::XMMATRIX* getViewMatrix() 
+		{
 			if (this->viewMatrix == nullptr)
 			{
 				std::cout << "No view matrix transform";
@@ -597,34 +601,15 @@ namespace NODETYPES
 			{
 				return dynamic_cast<NODETYPES::Transform*>(this->viewMatrix)->getWorldMatrix();
 			}
-		//};
-		DirectX::XMMATRIX* getViewMatrix() {
-			return &this->viewMatrix;
-		//};
-		DirectX::XMMATRIX* getViewMatrix() {
-		void clearViewMatrixReference() {
-			viewMatrix->removeReference(this->getUuid());
-			viewMatrix = nullptr;
-		}
-		//};
-		void removeViewMatrixReference() { 
-			this->viewMatrix->removeReference(this->getUuid());
-			this->viewMatrix = nullptr;
-		}
-			return &this->viewMatrix;
-		//};
-		DirectX::XMMATRIX* getViewMatrix() {
-			return &this->viewMatrix;
 		};
-		//DirectX::XMMATRIX* getViewMatrix() {
-		//	return &this->viewMatrix;
+		//NODETYPES::Node* getViewMatrix() {
+		//	return this->viewMatrix;
 		//};
-
-		void clearViewMatrixReference() {
+		void clearViewMatrixReference() 
+		{
 			viewMatrix->removeReference(this->getUuid());
 			viewMatrix = nullptr;
-		}
-
+		};
 		void removeViewMatrixReference() { 
 			this->viewMatrix->removeReference(this->getUuid());
 			this->viewMatrix = nullptr;
