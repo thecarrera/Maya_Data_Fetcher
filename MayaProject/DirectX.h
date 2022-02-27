@@ -28,6 +28,9 @@ private:
 	ComPtr<ID3D11RenderTargetView>		gGBufferRTVs[3]				{};
 	ComPtr<ID3D11ShaderResourceView>	gGBufferSRVs[3]				{};
 
+	//Light pass
+	ComPtr<ID3D11Buffer>				gLightPassQuadBuffer		{};
+	ComPtr<ID3D11Buffer>				gLightPassQuadIDBuffer		{};
 
 	struct ACTIVEPOINTLIGHTS{
 		UINT32 pointLightCount {};
@@ -59,6 +62,7 @@ private:
 	std::vector<std::shared_ptr<NODETYPES::Transform>>			transforms				{};
 	ComPtr<ID3D11Buffer>										transformBuffer			{}; // 64-bit - XMMATRIX(16-bit Aligned)
 
+	std::vector<std::shared_ptr<NODETYPES::Mesh>>				lightQuads				{};
 	std::vector<std::shared_ptr<NODETYPES::PointLight>>			pointLights				{};
 	ComPtr<ID3D11Buffer>										pointLightDataBuffer	{};  
 
@@ -134,6 +138,7 @@ private:
 
 	void createDefaultTextures();
 	void CreateSamplerStates();
+	void CreateLightPassQuad();
 	void CreateBuffers();
 	HRESULT CreateDeviceSwapchain(HWND* wndHandle);
 	HRESULT CreateDepthBuffer(int index);

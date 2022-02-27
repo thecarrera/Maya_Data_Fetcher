@@ -23,7 +23,7 @@ void NODETYPES::Node::removeReferences()
 		else if (type == "camera") {
 			NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(this->referredBy[i].first) };
 			if (this->type == "transform") {
-				camera->removeViewMatrixReference();
+				camera->removeTransformMatrixReference();
 			}
 		}
 		else if (type == "pointLight") {
@@ -106,8 +106,16 @@ bool NODETYPES::Mesh::existNormal() {
 ID3D11ShaderResourceView* NODETYPES::Mesh::getDiffuseBuffer() {
 	return dynamic_cast<NODETYPES::ShadingEngine*>(this->shadingEngines[0])->getDiffuseTexture();
 }
+ID3D11ShaderResourceView* NODETYPES::Mesh::getDefaultDiffuseBuffer()
+{
+	return dynamic_cast<NODETYPES::ShadingEngine*>(this->shadingEngines[0])->getDefaultDiffuseTexture();
+}
 ID3D11ShaderResourceView* NODETYPES::Mesh::getNormalBuffer() {
 	return dynamic_cast<NODETYPES::ShadingEngine*>(this->shadingEngines[0])->getNormalTexture();
+}
+ID3D11ShaderResourceView* NODETYPES::Mesh::getDefaultNormalBuffer()
+{
+	return dynamic_cast<NODETYPES::ShadingEngine*>(this->shadingEngines[0])->getDefaultNormalTexture();
 }
 
 //##### Transform
