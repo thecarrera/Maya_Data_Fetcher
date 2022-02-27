@@ -113,22 +113,22 @@ bool ComLib::send()
 	size_t pad = (blockCount * 64) - (this->packageSize + sizeof(HEADER));
 	size_t totalBlockSize = this->packageSize + sizeof(HEADER) + pad;
 
-	db = "blockCount: ";
-	db += static_cast<unsigned int>(blockCount);
-	MGlobal::displayInfo(db);
-	db = "pad: ";
-	db += static_cast<unsigned int>(pad);
-	MGlobal::displayInfo(db);
-	db = "totalBlockSize: ";
-	db += static_cast<unsigned int>(totalBlockSize);
-	MGlobal::displayInfo(db);
+	//db = "blockCount: ";
+	//db += static_cast<unsigned int>(blockCount);
+	//MGlobal::displayInfo(db);
+	//db = "pad: ";
+	//db += static_cast<unsigned int>(pad);
+	//MGlobal::displayInfo(db);
+	//db = "totalBlockSize: ";
+	//db += static_cast<unsigned int>(totalBlockSize);
+	//MGlobal::displayInfo(db);
 
 
 	if (*this->freeMemSize > totalBlockSize)
 	{
 		if (*this->mSize - totalBlockSize <= *this->head)
 		{
-			MGlobal::displayInfo("9.1");
+			//MGlobal::displayInfo("9.1");
 			this->header.msgId = MSG_TYPE::DUMMY;
 			this->header.attrID = ATTRIBUTE_TYPE::NONE;
 			this->header.msgSeq++;
@@ -140,12 +140,12 @@ bool ComLib::send()
 			*this->head = 0;
 			*this->freeMemSize -= header.msgLength;
 
-			db = "messageCount: ";
-			db += static_cast<unsigned int>(*this->messageCount);
-			MGlobal::displayInfo(db);
-			db = "freeMemSize: ";
-			db = *this->freeMemSize;
-			MGlobal::displayInfo(db);
+			//db = "messageCount: ";
+			//db += static_cast<unsigned int>(*this->messageCount);
+			//MGlobal::displayInfo(db);
+			//db = "freeMemSize: ";
+			//db = *this->freeMemSize;
+			//MGlobal::displayInfo(db);
 
 			this->mutex.Unlock();
 
@@ -155,7 +155,7 @@ bool ComLib::send()
 		{
 			if (this->packageSize > 0)
 			{
-				MGlobal::displayInfo("9.2");
+				//MGlobal::displayInfo("9.2");
 
 				this->header.msgId = MSG_TYPE::DUMMY;
 				this->header.attrID = ATTRIBUTE_TYPE::NONE;
@@ -168,12 +168,12 @@ bool ComLib::send()
 				memcpy(this->mData + *this->head, &this->header, sizeof(HEADER));
 				*this->head += sizeof(HEADER) + pad;
 
-				db = "packageSize: ";
-				db += static_cast<unsigned int>(this->packageSize);
-				MGlobal::displayInfo(db);
-				db = "header + pad: ";
-				db += static_cast<unsigned int>(sizeof(header) + pad);
-				MGlobal::displayInfo(db);
+				//db = "packageSize: ";
+				//db += static_cast<unsigned int>(this->packageSize);
+				//MGlobal::displayInfo(db);
+				//db = "header + pad: ";
+				//db += static_cast<unsigned int>(sizeof(header) + pad);
+				//MGlobal::displayInfo(db);
 
 				*this->freeMemSize -= totalBlockSize;
 				*this->messageCount += 1;
@@ -208,23 +208,23 @@ void ComLib::addToPackage(char* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYP
 		tempMsg.resize(sizeof(HEADER) + length);
 	}
 
-	debugString = packageSize;
-	MGlobal::displayInfo(debugString);
+	//debugString = packageSize;
+	//MGlobal::displayInfo(debugString);
 
 	this->header.msgId = msgType;
 	this->header.attrID = attrType;
 	this->header.msgSeq++;
 	this->header.msgLength = length + pad;
 	
-	debugString = "tempOffset: ";
-	debugString += static_cast<unsigned int>(tempMessageOffset);
-	MGlobal::displayInfo(debugString);
-	debugString = "message Length: ";
-	debugString += static_cast<unsigned int>(length);
-	MGlobal::displayInfo(debugString);
-	debugString = "tempMsg size: ";
-	debugString += static_cast<unsigned int>(tempMsg.size());
-	MGlobal::displayInfo(debugString);
+	//debugString = "tempOffset: ";
+	//debugString += static_cast<unsigned int>(tempMessageOffset);
+	//MGlobal::displayInfo(debugString);
+	//debugString = "message Length: ";
+	//debugString += static_cast<unsigned int>(length);
+	//MGlobal::displayInfo(debugString);
+	//debugString = "tempMsg size: ";
+	//debugString += static_cast<unsigned int>(tempMsg.size());
+	//MGlobal::displayInfo(debugString);
 
 
 	memcpy(tempMsg.data() + tempMessageOffset, &header, sizeof(HEADER));
@@ -237,17 +237,17 @@ void ComLib::addToPackage(char* msg, const MSG_TYPE msgType, const ATTRIBUTE_TYP
 	}
 	
 
-	debugString = tempMsg.size();
-	MGlobal::displayInfo(debugString);
+	//debugString = tempMsg.size();
+	//MGlobal::displayInfo(debugString);
 
 	this->mutex.Lock();
 	this->package.resize(this->packageSize + totalBlockSize);
 	memcpy(this->package.data(), tempMsg.data(), tempMessageOffset);
 	this->packageSize = this->packageSize + totalBlockSize;
 	this->mutex.Unlock();
-	debugString = "Package Size: ";
-	debugString += static_cast<unsigned int>(packageSize);
-	MGlobal::displayInfo(debugString);
+	//debugString = "Package Size: ";
+	//debugString += static_cast<unsigned int>(packageSize);
+	//MGlobal::displayInfo(debugString);
 
 }
 

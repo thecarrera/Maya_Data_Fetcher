@@ -97,7 +97,7 @@ bool Connection_Status::peekExistingMessage()
 		mutex.Unlock();
 		if (messageCount > 0)
 		{
-			MGlobal::displayInfo("message Exist");
+			//MGlobal::displayInfo("message Exist");
 			return 1;
 		}
 	}
@@ -108,14 +108,14 @@ HRESULT Connection_Status::checkConnection(CONNECTION_TYPE& type)
 	MString db{};
 	if (this->hFileMap)
 	{
-		MGlobal::displayInfo("A");
+		//MGlobal::displayInfo("A");
 		size_t freeMemSize {*this->freeMemSize};
 		size_t memSize {*this->mSize};
 
-		db = freeMemSize;
-		MGlobal::displayInfo(db);
-		db = memSize;
-		MGlobal::displayInfo(db);
+		//db = freeMemSize;
+		//MGlobal::displayInfo(db);
+		//db = memSize;
+		//MGlobal::displayInfo(db);
 
 		if (freeMemSize < memSize)
 		{
@@ -125,9 +125,9 @@ HRESULT Connection_Status::checkConnection(CONNECTION_TYPE& type)
 			*this->tail += sizeof(CONNECTION_TYPE);
 			*this->freeMemSize += sizeof(CONNECTION_TYPE);
 
-			MGlobal::displayInfo("messageCount:");
-			db = static_cast<unsigned int>(*this->messageCount);
-			MGlobal::displayInfo(db);
+			//MGlobal::displayInfo("messageCount:");
+			//db = static_cast<unsigned int>(*this->messageCount);
+			//MGlobal::displayInfo(db);
 
 
 			if (*this->tail == *this->mSize)

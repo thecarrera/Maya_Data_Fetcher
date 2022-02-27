@@ -101,7 +101,7 @@ char* ComLib::recv()
 		if (freeMemSize < memSize)
 		{
 			size_t messageLength {reinterpret_cast<HEADER*>(this->mData + *this->tail)->msgLength};
-			std::cout << "messageLength: " << messageLength << std::endl;
+			//std::cout << "messageLength: " << messageLength << std::endl;
 			
 			char* msg = this->mData + *this->tail;
 			*this->tail += sizeof(HEADER) + messageLength;

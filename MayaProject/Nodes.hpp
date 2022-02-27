@@ -53,7 +53,7 @@ namespace NODETYPES
 		ComPtr<ID3D11Buffer> matrixBuffer {};
 
 		const DirectX::XMFLOAT4X4 DTFMatrix(const double matrix[4][4]) const {
-			DirectX::XMFLOAT4X4 fMatrix{};
+			DirectX::XMFLOAT4X4 fMatrix {};
 			fMatrix._11 = static_cast<float>(matrix[0][0]);
 			fMatrix._12 = static_cast<float>(matrix[0][1]);
 			fMatrix._13 = static_cast<float>(matrix[0][2]);
@@ -95,7 +95,40 @@ namespace NODETYPES
 			}
 		}
 
-		DirectX::XMMATRIX* getWorldMatrix() { return &matrices.worldMatrix; };
+		//DirectX::XMMATRIX* getWorldMatrix() { 
+		//	DirectX::XMMATRIX tempMatrix {matrices.worldMatrix};
+		//	for (size_t i = 0; i < parents.size(); ++i)
+		//	{
+		//		NODETYPES::Transform* parentTransform {dynamic_cast<NODETYPES::Transform*>(parents[i])};
+		//		DirectX::XMMATRIX parentMatrix {*parentTransform->getWorldMatrix()};
+		//		tempMatrix.r[0].m128_f32[0] *= parentMatrix.r[0].m128_f32[0];
+		//		tempMatrix.r[0].m128_f32[1] *= parentMatrix.r[0].m128_f32[1];
+		//		tempMatrix.r[0].m128_f32[2] *= parentMatrix.r[0].m128_f32[2];
+		//		tempMatrix.r[0].m128_f32[3] += parentMatrix.r[0].m128_f32[3];
+
+		//		tempMatrix.r[1].m128_f32[0] *= parentMatrix.r[1].m128_f32[0];
+		//		tempMatrix.r[1].m128_f32[1] *= parentMatrix.r[1].m128_f32[1];
+		//		tempMatrix.r[1].m128_f32[2] *= parentMatrix.r[1].m128_f32[2];
+		//		tempMatrix.r[1].m128_f32[3] += parentMatrix.r[1].m128_f32[3];
+
+		//		tempMatrix.r[2].m128_f32[0] *= parentMatrix.r[2].m128_f32[0];
+		//		tempMatrix.r[2].m128_f32[1] *= parentMatrix.r[2].m128_f32[1];
+		//		tempMatrix.r[2].m128_f32[2] *= parentMatrix.r[2].m128_f32[2];
+		//		tempMatrix.r[2].m128_f32[3] += parentMatrix.r[2].m128_f32[3];
+		//	}
+		//	return &tempMatrix; 
+		//};
+		DirectX::XMMATRIX* getWorldMatrix() {
+			DirectX::XMMATRIX tempMatrix {matrices.objectMatrix};
+			for (size_t i = 0; i < parents.size(); ++i)
+			{
+				NODETYPES::Transform* parentTransform {dynamic_cast<NODETYPES::Transform*>(parents[i])};
+				DirectX::XMMATRIX parentMatrix {*parentTransform->getWorldMatrix()};
+				tempMatrix = DirectX::XMMatrixMultiply(tempMatrix, parentMatrix);
+			}
+			return &tempMatrix; 			
+		}
+		//DirectX::XMMATRIX* getWorldMatrix() {return &matrices.worldMatrix};
 		DirectX::XMMATRIX* getObjectMatrix() { return &matrices.objectMatrix; };
 
 		UINT getMatricesStructSize() const { return sizeof(MATRICES); }
@@ -208,9 +241,11 @@ namespace NODETYPES
 
 		struct VERTEX
 		{
-			float point[3]{};
-			float normal[3]{};
-			float uv[2]{};
+			float point[3]		{};
+			float normal[3]		{};
+			float tangent[3]	{};
+			float bitangent[3]	{};
+			float uv[2]			{};
 		};
 
 		struct FACE
@@ -323,7 +358,7 @@ namespace NODETYPES
 
 			// Vertex Buffer
 				if (this->faces[faceIndex].gVertexBuffer.Get()) {
-					this->faces[faceIndex].gVertexBuffer.Get()->Release();
+					//this->faces[faceIndex].gVertexBuffer.Get()->Release();
 					this->faces[faceIndex].gVertexBuffer.Reset();
 			}
 
@@ -341,10 +376,9 @@ namespace NODETYPES
 
 			//Vertex ID Buffer
 			if (this->faces[faceIndex].gVertexIDBuffer.Get()) {
-				this->faces[faceIndex].gVertexIDBuffer.Get()->Release();
+				//this->faces[faceIndex].gVertexIDBuffer.Get()->Release();
 				this->faces[faceIndex].gVertexIDBuffer.Reset();
 			}
-
 			
 			bufferDesc.ByteWidth = UINT(sizeof(UINT32) * this->faces[faceIndex].vertexIDList.capacity());
 			bufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
@@ -427,20 +461,22 @@ namespace NODETYPES
 		ID3D11Buffer* getVertexIDBuffer(UINT faceIndex) { return this->faces[faceIndex].gVertexIDBuffer.Get();	}
 
 		ID3D11ShaderResourceView* getDiffuseBuffer();
+		ID3D11ShaderResourceView* getDefaultDiffuseBuffer();
 		ID3D11ShaderResourceView* getNormalBuffer();
+		ID3D11ShaderResourceView* getDefaultNormalBuffer();
 
 		void updateVertexListToBuffer(UINT faceIndex, ID3D11DeviceContext* gDeviceContext)
 		{
 			D3D11_MAPPED_SUBRESOURCE dataPtr {};
 			gDeviceContext->Map(this->faces[faceIndex].gVertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
-			memcpy(dataPtr.pData, this->faces[faceIndex].vertexList.data(), this->faces[faceIndex].vertexList.size());
+			memcpy(dataPtr.pData, this->faces[faceIndex].vertexList.data(), sizeof(NODETYPES::Mesh::VERTEX) * this->faces[faceIndex].vertexList.size());
 			gDeviceContext->Unmap(this->faces[faceIndex].gVertexBuffer.Get(), 0);
 		}
 		void updateVertexIDToBuffer(UINT faceIndex, ID3D11DeviceContext* gDeviceContext)
 		{
 			D3D11_MAPPED_SUBRESOURCE dataPtr{};
 			gDeviceContext->Map(this->faces[faceIndex].gVertexIDBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
-			memcpy(dataPtr.pData, this->faces[faceIndex].vertexIDList.data(), this->faces[faceIndex].vertexIDList.size());
+			memcpy(dataPtr.pData, this->faces[faceIndex].vertexIDList.data(), sizeof(UINT32) * this->faces[faceIndex].vertexIDList.size());
 			gDeviceContext->Unmap(this->faces[faceIndex].gVertexIDBuffer.Get(), 0);
 		}
 
@@ -542,7 +578,8 @@ namespace NODETYPES
 	class Camera : public Node
 	{
 	private:
-		NODETYPES::Node* viewMatrix{};
+		NODETYPES::Node* transformMatrix{};
+		DirectX::XMMATRIX viewMatrix{};
 		DirectX::XMMATRIX projectionMatrix{};
 		ComPtr<ID3D11Buffer> projectionBuffer {};
 
@@ -550,14 +587,18 @@ namespace NODETYPES
 		Camera(const std::string& name, const std::string& uuid, const std::string type) { this->setName(name); this->setUuid(uuid); this->setType(type); };
 		~Camera() {};
 
-		void setProjectionMatrix(const double projMat[4][4]) {
-			DirectX::XMFLOAT4X4 tempMat{
-			static_cast<float>(projMat[0][0]), static_cast<float>(projMat[0][1]), static_cast<float>(projMat[0][2]), static_cast<float>(projMat[0][3]),
-			static_cast<float>(projMat[1][0]), static_cast<float>(projMat[1][1]), static_cast<float>(projMat[1][2]), static_cast<float>(projMat[1][3]),
-			static_cast<float>(projMat[2][0]), static_cast<float>(projMat[2][1]), static_cast<float>(projMat[2][2]), static_cast<float>(projMat[2][3]),
-			static_cast<float>(projMat[3][0]), static_cast<float>(projMat[3][1]), static_cast<float>(projMat[3][2]), static_cast<float>(projMat[3][3])
+		void setProjectionMatrix(const double projMat[4][4])
+		{
+			DirectX::XMFLOAT4X4 mat{
+				static_cast<float>(projMat[0][0]), static_cast<float>(projMat[0][1]), static_cast<float>(projMat[0][2]), static_cast<float>(projMat[0][3]),
+				static_cast<float>(projMat[1][0]), static_cast<float>(projMat[1][1]), static_cast<float>(projMat[1][2]), static_cast<float>(projMat[1][3]),
+				static_cast<float>(projMat[2][0]), static_cast<float>(projMat[2][1]), static_cast<float>(projMat[2][2]), static_cast<float>(projMat[2][3]),
+				static_cast<float>(projMat[3][0]), static_cast<float>(projMat[3][1]), static_cast<float>(projMat[3][2]), static_cast<float>(projMat[3][3]),
 			};
-			this->projectionMatrix = DirectX::XMLoadFloat4x4(&tempMat);
+			this->projectionMatrix = DirectX::XMLoadFloat4x4(&mat);
+		};
+		void setProjectionMatrix(const DirectX::XMMATRIX projMat) {
+			this->projectionMatrix = projMat;
 		};
 		void setupBuffers(ID3D11Device* gDevice)
 		{
@@ -574,32 +615,37 @@ namespace NODETYPES
 			hr = gDevice->CreateBuffer(&mBufferDesc, &mData, &this->projectionBuffer);
 			if (FAILED(hr)) { exit(-1); }
 		}
-		void setViewMatrix(NODETYPES::Node* node) { 
-			node->addNewReferenceBy(this, "viewMatrix");
-			this->viewMatrix = node; 
+		void setTransformMatrix(NODETYPES::Node* node) { 
+			node->addNewReferenceBy(this, "transform");
+			this->transformMatrix = node;
+		}
+		void setViewMatrix(const double viewMatrix[4][4])
+		{
+			DirectX::XMFLOAT4X4 viewMat{
+				static_cast<float>(viewMatrix[0][0]), static_cast<float>(viewMatrix[0][1]), static_cast<float>(viewMatrix[0][2]), static_cast<float>(viewMatrix[0][3]),
+				static_cast<float>(viewMatrix[1][0]), static_cast<float>(viewMatrix[1][1]), static_cast<float>(viewMatrix[1][2]), static_cast<float>(viewMatrix[1][3]),
+				static_cast<float>(viewMatrix[2][0]), static_cast<float>(viewMatrix[2][1]), static_cast<float>(viewMatrix[2][2]), static_cast<float>(viewMatrix[2][3]),
+				static_cast<float>(viewMatrix[3][0]), static_cast<float>(viewMatrix[3][1]), static_cast<float>(viewMatrix[3][2]), static_cast<float>(viewMatrix[3][3]),
+			};
+			this->viewMatrix = DirectX::XMLoadFloat4x4(&viewMat);
 		}
 
 		DirectX::XMMATRIX* getProjectionMatrix() { return &this->projectionMatrix; };
-		DirectX::XMMATRIX* getViewMatix() {
-			if (this->viewMatrix == nullptr)
-			{
-				std::cout << "No view matrix transform";
-				return nullptr;
-			}
-			else
-			{
-				return dynamic_cast<NODETYPES::Transform*>(this->viewMatrix)->getWorldMatrix();
-			}
+		DirectX::XMMATRIX* getViewMatrix() 
+		{
+				return &this->viewMatrix;
 		};
-
-		void clearViewMatrixReference() {
-			viewMatrix->removeReference(this->getUuid());
-			viewMatrix = nullptr;
-		}
-
-		void removeViewMatrixReference() { 
-			this->viewMatrix->removeReference(this->getUuid());
-			this->viewMatrix = nullptr;
+		//NODETYPES::Node* getViewMatrix() {
+		//	return this->viewMatrix;
+		//};
+		void clearTransformMatrixReference() 
+		{
+			transformMatrix->removeReference(this->getUuid());
+			transformMatrix = nullptr;
+		};
+		void removeTransformMatrixReference() { 
+			this->transformMatrix->removeReference(this->getUuid());
+			this->transformMatrix = nullptr;
 		}
 	};
 
@@ -614,13 +660,18 @@ namespace NODETYPES
 
 	public:
 		Texture(const std::string& name, const std::string& uuid, const std::string type) { this->setName(name); this->setUuid(uuid); this->setType(type); };
-		~Texture() {this->gTexture.Get()->Release(); this->gTextureSRV.Get()->Release();};
+		~Texture() {this->gTexture.Reset(); this->gTextureSRV.Reset();};
 
 		HRESULT InitTexture(ID3D11Device* const gDevice, ID3D11DeviceContext* const gDeviceContext, const std::string filePath) {
 			wchar_t fileName[200]{};
 			for (size_t i = 0; i < filePath.length(); ++i)
 			{
 				fileName[i] = filePath[i];
+			}
+			if (this->gTextureSRV.Get())
+			{
+				this->gTextureSRV.Reset();
+				this->gTexture.Reset();
 			}
 			return DirectX::CreateWICTextureFromFile(gDevice, fileName, &this->gTexture, &this->gTextureSRV, NULL);
 		}
@@ -694,25 +745,65 @@ namespace NODETYPES
 	{
 	private:
 		bool diffuseConnected{};
-		DirectX::XMFLOAT3 color{};
+		uint32_t color{};
+		//DirectX::XMFLOAT3 color{};
 		std::vector<NODETYPES::Node*> diffuseMaps{};
 
 		bool colorMapConnected{};
-		DirectX::XMFLOAT3 ambientColor{};
-		std::vector<NODETYPES::Node*> colorMaps{};
+		uint32_t ambientColor{};
+		std::vector<NODETYPES::Node*> ambientMaps{};
 
 		bool transparancyMapConnected{};
-		DirectX::XMFLOAT3 transparancy{};
+		uint32_t transparancy{};
 		std::vector<NODETYPES::Node*> transparancyMaps{};
 
 		bool normalMapConnected{};
 		std::vector<NODETYPES::Node*> normalMaps{};
 
+		//Default textures (same order as above, [0] -> Diffuse, [3] -> Normal
+		ComPtr<ID3D11Texture2D>				defaultTextureMap[4]{};
+		ComPtr<ID3D11ShaderResourceView>	defaultTextureSRV[4]{};
+
 	public:
-		Lambert(std::string& name, std::string& uuid, const std::string type) { this->setName(name); this->setUuid(uuid); this->setType(type); };
+		Lambert(std::string& name, std::string& uuid, ID3D11Device* gDevice, const std::string type) { 
+			HRESULT hr {};
+			this->setName(name);
+			this->setUuid(uuid);
+			this->setType(type);
+			
+			D3D11_TEXTURE2D_DESC defaultTextureDesc{
+				.Width			{1},
+				.Height			{1},
+				.MipLevels		{1},
+				.ArraySize		{1},
+				.Format			{DXGI_FORMAT_R8G8B8A8_UNORM},
+				.Usage			{D3D11_USAGE_DYNAMIC},
+				.BindFlags		{D3D11_BIND_SHADER_RESOURCE},
+				.CPUAccessFlags {D3D11_CPU_ACCESS_WRITE}
+			};
+			defaultTextureDesc.SampleDesc.Count = 1;
+			static const uint32_t color = 0xFFFFFF00;
+			D3D11_SUBRESOURCE_DATA dataPtr{ &color, sizeof(uint32_t), 0 };
+			for (short i = 0; i < 4; ++i)
+			{
+				hr = gDevice->CreateTexture2D(&defaultTextureDesc, &dataPtr, &this->defaultTextureMap[i]);
+				if (FAILED(hr)) { exit(-1); }
+
+			}
+			D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc{
+				.Format {DXGI_FORMAT_R8G8B8A8_UNORM},
+				.ViewDimension {D3D11_SRV_DIMENSION_TEXTURE2D},
+			};
+			SRVDesc.Texture2D.MipLevels = 1;
+			for (short i = 0; i < 4; ++i)
+			{
+				hr = gDevice->CreateShaderResourceView(this->defaultTextureMap[i].Get(), &SRVDesc, &this->defaultTextureSRV[i]);
+				if (FAILED(hr)) { exit(-1); }
+			}
+		};
 		~Lambert() {};
 
-		void setChannels(float const values[3], ComLib::ATTRIBUTE_TYPE attribute) {
+		/*void setChannels(float const values[3], ComLib::ATTRIBUTE_TYPE attribute) {
 			switch (attribute)
 			{
 			case ComLib::ATTRIBUTE_TYPE::SHCOLOR:
@@ -725,7 +816,31 @@ namespace NODETYPES
 				this->transparancy.x = values[0]; this->transparancy.y = values[1]; this->transparancy.z = values[2];
 				break;
 			}
-		};
+		};*/
+		void setChannels(uint32_t RGBA, ID3D11DeviceContext* gDeviceContext ,ComLib::ATTRIBUTE_TYPE attribute) {
+			D3D11_MAPPED_SUBRESOURCE dataPtr{};
+			switch (attribute)
+			{
+			case ComLib::ATTRIBUTE_TYPE::SHCOLOR:
+				this->color = RGBA;
+				gDeviceContext->Map(this->defaultTextureMap[0].Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
+				memcpy(dataPtr.pData, &RGBA, sizeof(uint32_t));
+				gDeviceContext->Unmap(this->defaultTextureMap[0].Get(), 0);
+				break;
+			case ComLib::ATTRIBUTE_TYPE::SHAMBIENTCOLOR:
+				this->ambientColor = RGBA;
+				gDeviceContext->Map(this->defaultTextureMap[1].Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
+				memcpy(dataPtr.pData, &RGBA, sizeof(uint32_t));
+				gDeviceContext->Unmap(this->defaultTextureMap[1].Get(), 0);
+				break;
+			case ComLib::ATTRIBUTE_TYPE::SHTRANSPARANCY:
+				this->transparancy = RGBA;
+				gDeviceContext->Map(this->defaultTextureMap[2].Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
+				memcpy(dataPtr.pData, &RGBA, sizeof(uint32_t));
+				gDeviceContext->Unmap(this->defaultTextureMap[2].Get(), 0);
+				break;
+			}
+		}
 		void setTextureConnected(bool connection, ComLib::ATTRIBUTE_TYPE attribute) {
 			switch (attribute)
 			{
@@ -749,7 +864,7 @@ namespace NODETYPES
 				this->diffuseMaps = maps;
 				break;
 			case ComLib::ATTRIBUTE_TYPE::SHAMBIENTCOLORMAP:
-				this->colorMaps = maps;
+				this->diffuseMaps = maps;
 				break;
 			case ComLib::ATTRIBUTE_TYPE::SHTRANSPARANCYMAP:
 				this->transparancyMaps = maps;
@@ -782,8 +897,14 @@ namespace NODETYPES
 		ID3D11ShaderResourceView* getDiffuseMap() {
 			return dynamic_cast<NODETYPES::Texture*>(this->diffuseMaps[0])->getTextureSRV();
 		}
+		ID3D11ShaderResourceView* getDefaultDiffuseMap() {
+			return this->defaultTextureSRV[0].Get();
+		}
 		ID3D11ShaderResourceView* getNormalMap() {
 			return dynamic_cast<NODETYPES::Bump*>(this->normalMaps[0])->getNormalSRV();
+		}
+		ID3D11ShaderResourceView* getDefaultNormalMap() {
+			return this->defaultTextureSRV[3].Get();
 		}
 
 		void removeDiffuseMap(std::string uuid) {
@@ -795,10 +916,10 @@ namespace NODETYPES
 			}
 		}
 		void removeColorMap(std::string uuid) {
-			for (size_t i = 0; i < this->colorMaps.size(); ++i) {
-				if (this->colorMaps[i]->getUuid() == uuid)
+			for (size_t i = 0; i < this->diffuseMaps.size(); ++i) {
+				if (this->diffuseMaps[i]->getUuid() == uuid)
 				{
-					this->colorMaps.erase(colorMaps.begin() + i);
+					this->diffuseMaps.erase(diffuseMaps.begin() + i);
 				}
 			}
 		}
@@ -826,9 +947,9 @@ namespace NODETYPES
 			}
 		}
 		void clearColorMaps() {
-			for (size_t i = 0; i < this->colorMaps.size(); ++i)
+			for (size_t i = 0; i < this->diffuseMaps.size(); ++i)
 			{
-				this->colorMaps[i]->removeReference(this->getUuid());
+				this->diffuseMaps[i]->removeReference(this->getUuid());
 			}
 		}
 		void clearTransparancyMaps() {
@@ -849,15 +970,16 @@ namespace NODETYPES
 	{
 	private:
 		bool diffuseConnected{};
-		DirectX::XMFLOAT3 color{};
+		uint32_t color{};
+		//DirectX::XMFLOAT3 color{};
 		std::vector<NODETYPES::Node*> diffuseMaps{};
 
 		bool colorMapConnected{};
-		DirectX::XMFLOAT3 ambientColor{};
+		uint32_t ambientColor{};
 		std::vector<NODETYPES::Node*> colorMaps{};
 
 		bool transparancyMapConnected{};
-		DirectX::XMFLOAT3 transparancy{};
+		uint32_t transparancy{};
 		std::vector<NODETYPES::Node*> transparancyMaps{};
 
 		bool normalMapConnected{};
@@ -867,23 +989,88 @@ namespace NODETYPES
 		//DirectX::XMFLOAT3 specular{};
 		//std::vector<NODETYPES::Node*> specularMaps{};
 
+		//Default textures (same order as above, [0] -> Diffuse, [4] -> Normal
+		ComPtr<ID3D11Texture2D>				defaultTextureMap[5]{};
+		ComPtr<ID3D11ShaderResourceView>	defaultTextureSRV[5]{};
+
 		std::vector<NODETYPES::Node*> shadingEngines{};
 
 	public:
-		Blinn(std::string& name, std::string& uuid, const std::string type) { this->setName(name); this->setUuid(uuid); this->setType(type); };
+		Blinn(std::string& name, std::string& uuid, ID3D11Device* gDevice, const std::string type) { 
+			HRESULT hr {};
+			this->setName(name);
+			this->setUuid(uuid);
+			this->setType(type);
+		
+			D3D11_TEXTURE2D_DESC defaultTextureDesc{
+				.Width			{1},
+				.Height			{1},
+				.MipLevels		{1},
+				.ArraySize		{1},
+				.Format			{DXGI_FORMAT_R8G8B8A8_UNORM},
+				.Usage			{D3D11_USAGE_DYNAMIC},
+				.BindFlags		{D3D11_BIND_SHADER_RESOURCE},
+				.CPUAccessFlags {D3D11_CPU_ACCESS_WRITE}
+			};
+			defaultTextureDesc.SampleDesc.Count = 1;
+			static const uint32_t color = 0xFFFFFF00;
+			D3D11_SUBRESOURCE_DATA dataPtr{ &color, sizeof(uint32_t), 0 };
+			for (short i = 0; i < 4; ++i)
+			{
+				hr = gDevice->CreateTexture2D(&defaultTextureDesc, &dataPtr, &this->defaultTextureMap[i]);
+				if (FAILED(hr)) { exit(-1); }
+			}
+			D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc{
+				.Format {DXGI_FORMAT_R8G8B8A8_UNORM},
+				.ViewDimension {D3D11_SRV_DIMENSION_TEXTURE2D},
+			};
+			SRVDesc.Texture2D.MipLevels = 1;
+			for (short i = 0; i < 4; ++i)
+			{
+				hr = gDevice->CreateShaderResourceView(this->defaultTextureMap[i].Get(), &SRVDesc, &this->defaultTextureSRV[i]);
+				if (FAILED(hr)) { exit(-1); }
+			}
+		};
 		~Blinn() {};
 
-		void setChannels(float const values[3], ComLib::ATTRIBUTE_TYPE attribute) {
+		//void setChannels(float const values[3], ComLib::ATTRIBUTE_TYPE attribute) {
+		//	switch (attribute)
+		//	{
+		//	case ComLib::ATTRIBUTE_TYPE::SHCOLOR:
+		//		this->color.x = values[0]; this->color.y = values[1]; this->color.z = values[2];
+		//		break;
+		//	case ComLib::ATTRIBUTE_TYPE::SHAMBIENTCOLOR:
+		//		this->ambientColor.x = values[0]; this->ambientColor.y = values[1]; this->ambientColor.z = values[2];
+		//		break;
+		//	case ComLib::ATTRIBUTE_TYPE::SHTRANSPARANCY:
+		//		this->transparancy.x = values[0]; this->transparancy.y = values[1]; this->transparancy.z = values[2];
+		//		break;
+		//		//ADD SUPPORT FOR SPECULAR
+		//		//---
+		//		//---
+		//	}
+		//};
+		void setChannels(uint32_t const RGBA, ID3D11DeviceContext* gDeviceContext, ComLib::ATTRIBUTE_TYPE attribute) {
+			D3D11_MAPPED_SUBRESOURCE dataPtr{};
 			switch (attribute)
 			{
 			case ComLib::ATTRIBUTE_TYPE::SHCOLOR:
-				this->color.x = values[0]; this->color.y = values[1]; this->color.z = values[2];
+				this->color = RGBA;
+				gDeviceContext->Map(this->defaultTextureMap[0].Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
+				memcpy(dataPtr.pData, &RGBA, sizeof(uint32_t));
+				gDeviceContext->Unmap(this->defaultTextureMap[0].Get(), 0);
 				break;
 			case ComLib::ATTRIBUTE_TYPE::SHAMBIENTCOLOR:
-				this->ambientColor.x = values[0]; this->ambientColor.y = values[1]; this->ambientColor.z = values[2];
+				this->ambientColor = RGBA;
+				gDeviceContext->Map(this->defaultTextureMap[1].Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
+				memcpy(dataPtr.pData, &RGBA, sizeof(uint32_t));
+				gDeviceContext->Unmap(this->defaultTextureMap[1].Get(), 0);
 				break;
 			case ComLib::ATTRIBUTE_TYPE::SHTRANSPARANCY:
-				this->transparancy.x = values[0]; this->transparancy.y = values[1]; this->transparancy.z = values[2];
+				this->transparancy = RGBA;
+				gDeviceContext->Map(this->defaultTextureMap[2].Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
+				memcpy(dataPtr.pData, &RGBA, sizeof(uint32_t));
+				gDeviceContext->Unmap(this->defaultTextureMap[2].Get(), 0);
 				break;
 				//ADD SUPPORT FOR SPECULAR
 				//---
@@ -948,8 +1135,14 @@ namespace NODETYPES
 		ID3D11ShaderResourceView* getDiffuseMap() {
 			return dynamic_cast<NODETYPES::Texture*>(this->diffuseMaps[0])->getTextureSRV();
 		}
+		ID3D11ShaderResourceView* getDefaultDiffuseMap() {
+			return this->defaultTextureSRV[0].Get();
+		}
 		ID3D11ShaderResourceView* getNormalMap() {
 			return dynamic_cast<NODETYPES::Texture*>(this->normalMaps[0])->getTextureSRV();
+		}
+		ID3D11ShaderResourceView* getDefaultNormalMap() {
+			return this->defaultTextureSRV[4].Get();
 		}
 
 		void removeDiffuseMap(std::string uuid) {
@@ -1009,7 +1202,6 @@ namespace NODETYPES
 				this->normalMaps[i]->removeReference(this->getUuid());
 			}
 		}
-
 	};
 
 	class ShadingEngine : public Node
@@ -1079,7 +1271,18 @@ namespace NODETYPES
 			}
 			else if(this->materials[0]->getType() == "blinn")
 			{
-				return dynamic_cast<NODETYPES::Blinn*>(this->materials[0])->getNormalMap();
+				return dynamic_cast<NODETYPES::Blinn*>(this->materials[0])->getDiffuseMap();
+			}
+			return nullptr;
+		}
+		ID3D11ShaderResourceView* getDefaultDiffuseTexture() {
+			if (this->materials[0]->getType() == "lambert")
+			{
+				return dynamic_cast<NODETYPES::Lambert*>(this->materials[0])->getDefaultDiffuseMap();
+			}
+			else if (this->materials[0]->getType() == "blinn")
+			{
+				return dynamic_cast<NODETYPES::Blinn*>(this->materials[0])->getDefaultDiffuseMap();
 			}
 			return nullptr;
 		}
@@ -1091,6 +1294,17 @@ namespace NODETYPES
 			else if (this->materials[0]->getType() == "blinn")
 			{
 				return dynamic_cast<NODETYPES::Blinn*>(this->materials[0])->getNormalMap();
+			}
+			return nullptr;
+		}
+		ID3D11ShaderResourceView* getDefaultNormalTexture() {
+			if (this->materials[0]->getType() == "lambert")
+			{
+				return dynamic_cast<NODETYPES::Lambert*>(this->materials[0])->getDefaultNormalMap();
+			}
+			else if (this->materials[0]->getType() == "blinn")
+			{
+				return dynamic_cast<NODETYPES::Blinn*>(this->materials[0])->getDefaultNormalMap();
 			}
 			return nullptr;
 		}
