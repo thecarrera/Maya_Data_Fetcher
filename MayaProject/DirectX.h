@@ -15,7 +15,6 @@ private:
 	ComPtr<ID3D11RasterizerState>		gRasterizerState			{};
 	ComPtr<ID3D11Texture2D>				gDepthStencil[2]			{};
 	ComPtr<ID3D11DepthStencilView>		gDepthStencilView[2]		{};
-	ComPtr<ID3D11DepthStencilState>		gDepthStencilState			{};
 	ComPtr<ID3D11RenderTargetView>		gBackbufferRTV[2]			{};
 
 	//Default Textures
@@ -26,11 +25,8 @@ private:
 	//G-Buffer
 	ComPtr<ID3D11Texture2D>				gGBufferTextures[3]			{};
 	ComPtr<ID3D11RenderTargetView>		gGBufferRTVs[3]				{};
-	ComPtr<ID3D11ShaderResourceView>	gGBufferSRVs[3]				{};
+	ComPtr<ID3D11ShaderResourceView>	gGBufferSRVs[3]			{};
 
-	//Light pass
-	ComPtr<ID3D11Buffer>				gLightPassQuadBuffer		{};
-	ComPtr<ID3D11Buffer>				gLightPassQuadIDBuffer		{};
 
 	struct ACTIVEPOINTLIGHTS{
 		UINT32 pointLightCount {};
@@ -62,7 +58,6 @@ private:
 	std::vector<std::shared_ptr<NODETYPES::Transform>>			transforms				{};
 	ComPtr<ID3D11Buffer>										transformBuffer			{}; // 64-bit - XMMATRIX(16-bit Aligned)
 
-	std::vector<std::shared_ptr<NODETYPES::Mesh>>				lightQuads				{};
 	std::vector<std::shared_ptr<NODETYPES::PointLight>>			pointLights				{};
 	ComPtr<ID3D11Buffer>										pointLightDataBuffer	{};  
 
@@ -138,15 +133,12 @@ private:
 
 	void createDefaultTextures();
 	void CreateSamplerStates();
-	void CreateLightPassQuad();
 	void CreateBuffers();
 	HRESULT CreateDeviceSwapchain(HWND* wndHandle);
 	HRESULT CreateDepthBuffer(int index);
 	HRESULT CreateDepthStencil(int index, ID3D11Texture2D* pBackBuffer);
-	HRESULT CreateDepthStencilState();
 	HRESULT CreateGBufferResources();
 	HRESULT CreateRasterizerState();
-	void setScissorRect();
 	void setViewPort();
 
 	void CreateShaders();
