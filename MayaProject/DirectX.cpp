@@ -55,14 +55,14 @@ void DX::deallocateNodes()
 void DX::disconnect()
 {
 	if (SUCCEEDED(this->comlib->connectionStatus->sendPulse(Connection_Status::CONNECTION_TYPE::DISCONNECTED))) {}
-	else {exit(-1);}
+	else { exit(-1); }
 }
 
 void DX::updatePointLight(char* msg)
 {
-	size_t messageOffset {};
-	size_t uuidSize {};
-	std::string uuid {};
+	size_t messageOffset{};
+	size_t uuidSize{};
+	std::string uuid{};
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
@@ -70,15 +70,15 @@ void DX::updatePointLight(char* msg)
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
-	NODETYPES::Node* node {this->findNode(uuid)};
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		NODETYPES::PointLight* pointLight { dynamic_cast<NODETYPES::PointLight*>(node) };
+		NODETYPES::PointLight* pointLight{ dynamic_cast<NODETYPES::PointLight*>(node) };
 		if (pointLight)
 		{
-			size_t transformUuidSize {};
-			std::string transformUuid {};
-			float intensity {};
+			size_t transformUuidSize{};
+			std::string transformUuid{};
+			float intensity{};
 			float color[3]{};
 
 			memcpy(&transformUuidSize, msg + messageOffset, STSIZE);
@@ -87,19 +87,18 @@ void DX::updatePointLight(char* msg)
 			memcpy(&transformUuid[0], msg + messageOffset, transformUuidSize);
 			messageOffset += transformUuidSize;
 
-			NODETYPES::Node* transformer {this->findNode(transformUuid)};
+			NODETYPES::Node* transformer{ this->findNode(transformUuid) };
 			if (transformer)
 			{
 				pointLight->setTransform(transformer);
 			}
 
 			memcpy(&intensity, msg + messageOffset, sizeof(float));
-			messageOffset += STSIZE;
+			messageOffset += sizeof(float);
 			memcpy(&color, msg + messageOffset, sizeof(color));
-			
+
 			pointLight->setIntensity(intensity);
 			pointLight->setColor(color);
-
 		}
 	}
 }
@@ -118,36 +117,37 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		double matrix[4][4]{};
-		memcpy(&matrix, msg + messageOffset, sizeof(double[4][4]));
-		messageOffset += sizeof(double[4][4]);
-		
 		if (attr == ComLib::ATTRIBUTE_TYPE::MATRIX)
 		{
-			NODETYPES::Transform* transform {dynamic_cast<NODETYPES::Transform*>(node)};
+			NODETYPES::Transform* transform{ dynamic_cast<NODETYPES::Transform*>(node) };
 			if (transform)
 			{
-				double worldMatrix[4][4] {};
+				double matrix[4][4]{};
+				memcpy(&matrix, msg + messageOffset, sizeof(double[4][4]));
+				messageOffset += sizeof(double[4][4]);
+
+				double worldMatrix[4][4]{};
 				memcpy(&worldMatrix, msg + messageOffset, sizeof(double[4][4]));
 				messageOffset += sizeof(double[4][4]);
+
 				transform->setMatrix(matrix, 0);
 				transform->setMatrix(worldMatrix, 1);
 				transform->setupBuffers(this->gDevice.Get());
 
 				if (node->getName() != "world")
 				{
-					size_t parentUuidSize {};
-					std::string parentUuid {};
+					size_t parentUuidSize{};
+					std::string parentUuid{};
 					memcpy(&parentUuidSize, msg + messageOffset, STSIZE);
 					messageOffset += STSIZE;
 					parentUuid.resize(parentUuidSize);
 					memcpy(&parentUuid[0], msg + messageOffset, parentUuidSize);
 					messageOffset += parentUuidSize;
 
-					NODETYPES::Node* parentNode {this->findNode(parentUuid)};
+					NODETYPES::Node* parentNode{ this->findNode(parentUuid) };
 					if (parentNode)
 					{
-						NODETYPES::Transform* parentTransform {dynamic_cast<NODETYPES::Transform*>(parentNode)};
+						NODETYPES::Transform* parentTransform{ dynamic_cast<NODETYPES::Transform*>(parentNode) };
 						if (parentTransform)
 						{
 							transform->addParent(parentNode);
@@ -161,11 +161,14 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 			NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
 			if (camera)
 			{
-				camera->setProjectionMatrix(matrix);
-				camera->setupBuffers(this->gDevice.Get());
+				double projMat[4][4]{};
+				memcpy(&projMat, msg + messageOffset, sizeof(projMat));
+				messageOffset += sizeof(projMat);
 
-				size_t viewUuidSize		{};
-				std::string viewUuid	{};
+				camera->setProjectionMatrix(projMat);
+
+				size_t viewUuidSize{};
+				std::string viewUuid{};
 
 				memcpy(&viewUuidSize, msg + messageOffset, STSIZE);
 				messageOffset += STSIZE;
@@ -173,21 +176,20 @@ void DX::updateMatrix(char* msg, ComLib::ATTRIBUTE_TYPE attr)
 				memcpy(&viewUuid[0], msg + messageOffset, viewUuidSize);
 				messageOffset += viewUuidSize;
 
-				NODETYPES::Node* viewMatrix {this->findNode(viewUuid)};
-				if (viewMatrix)
+				NODETYPES::Node* transformMatrix{ this->findNode(viewUuid) };
+				if (transformMatrix)
 				{
-					camera->setViewMatrix(viewMatrix);
+					camera->setTransformMatrix(transformMatrix);
 				}
-
 			}
 		}
 	}
 }
 void DX::updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 {
-	size_t messageOffset {};
-	size_t uuidSize {};
-	std::string uuid {};
+	size_t messageOffset{};
+	size_t uuidSize{};
+	std::string uuid{};
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
@@ -195,18 +197,18 @@ void DX::updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
-	NODETYPES::Node* node { this->findNode(uuid) };
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		NODETYPES::Mesh* mesh {dynamic_cast<NODETYPES::Mesh*>(node)};
+		NODETYPES::Mesh* mesh{ dynamic_cast<NODETYPES::Mesh*>(node) };
 		if (mesh)
 		{
 			if (attribute == ComLib::ATTRIBUTE_TYPE::VERTEX/* ||
 				attribute == ComLib::ATTRIBUTE_TYPE::NORMAL*/)
 			{
-				UINT faceIndex   {};
-				UINT actualPos   {};
-				int iteratedPos {};
+				UINT faceIndex{};
+				UINT actualPos{};
+				int iteratedPos{};
 
 				memcpy(&faceIndex, msg + messageOffset, UINTSIZE);
 				messageOffset += UINTSIZE;
@@ -214,12 +216,12 @@ void DX::updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 				messageOffset += UINTSIZE;
 				memcpy(&iteratedPos, msg + messageOffset, sizeof(int));
 				messageOffset += sizeof(int);
-				
-				std::vector<NODETYPES::Mesh::VERTEX> container {};
+
+				std::vector<NODETYPES::Mesh::VERTEX> container{};
 				container.resize(100);
-				UINT containerSize = container.size();
-				memcpy(container.data(), msg + messageOffset, container.size());
-				messageOffset += container.size();
+				UINT containerSize = sizeof(NODETYPES::Mesh::VERTEX) * static_cast<size_t>(iteratedPos + 1);
+				memcpy(container.data(), msg + messageOffset, containerSize);
+				messageOffset += containerSize;
 
 				mesh->updateList(faceIndex, actualPos, iteratedPos, container);
 
@@ -233,12 +235,9 @@ void DX::updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 			}
 			else if (attribute == ComLib::ATTRIBUTE_TYPE::VERTEXID)
 			{
-				UINT faceIndex {};
+				UINT faceIndex{};
 				UINT actualPos{};
-				UINT iteratedPos{};
-
-				std::vector<UINT32> container {};
-				container.resize(200);
+				int iteratedPos{};
 
 				memcpy(&faceIndex, msg + messageOffset, UINTSIZE);
 				messageOffset += UINTSIZE;
@@ -246,8 +245,12 @@ void DX::updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 				messageOffset += UINTSIZE;
 				memcpy(&iteratedPos, msg + messageOffset, sizeof(int));
 				messageOffset += sizeof(int);
-				memcpy(&container[0], msg + messageOffset, container.size());
-				messageOffset += container.size();
+
+				std::vector<UINT32> container{};
+				container.resize(200);
+				UINT containerSize{ sizeof(UINT32) * static_cast<size_t>(iteratedPos + 1) };
+				memcpy(&container[0], msg + messageOffset, containerSize);
+				messageOffset += containerSize;
 
 				mesh->updateList(faceIndex, actualPos, iteratedPos, container);
 			}
@@ -276,9 +279,9 @@ void DX::updateList(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 }
 void DX::updateMeshTransform(char* msg)
 {
-	size_t messageOffset {};
-	size_t uuidSize {};
-	std::string uuid {};
+	size_t messageOffset{};
+	size_t uuidSize{};
+	std::string uuid{};
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
@@ -286,21 +289,21 @@ void DX::updateMeshTransform(char* msg)
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
-	NODETYPES::Node* node {this->findNode(uuid)};
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		NODETYPES::Mesh* mesh {dynamic_cast<NODETYPES::Mesh*>(node)};
+		NODETYPES::Mesh* mesh{ dynamic_cast<NODETYPES::Mesh*>(node) };
 		if (mesh)
 		{
-			size_t transformUuidSize	{};
-			std::string transformUuid	{};
+			size_t transformUuidSize{};
+			std::string transformUuid{};
 			memcpy(&transformUuidSize, msg + messageOffset, STSIZE);
 			messageOffset += STSIZE;
 			transformUuid.resize(transformUuidSize);
 			memcpy(&transformUuid[0], msg + messageOffset, transformUuidSize);
 			messageOffset += transformUuidSize;
 
-			NODETYPES::Node* transformer {this->findNode(transformUuid)};
+			NODETYPES::Node* transformer{ this->findNode(transformUuid) };
 			if (transformer)
 			{
 				mesh->setTransform(transformer);
@@ -310,23 +313,23 @@ void DX::updateMeshTransform(char* msg)
 }
 void DX::updateMeshShaders(char* msg)
 {
-	size_t messageOffset		{};
-	size_t uuidSize				{};
-	std::string uuid			{};
+	size_t messageOffset{};
+	size_t uuidSize{};
+	std::string uuid{};
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
 	uuid.resize(uuidSize);
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
-	
-	NODETYPES::Node* node { this->findNode(uuid) };
+
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
 		NODETYPES::Mesh* mesh{ dynamic_cast<NODETYPES::Mesh*>(node) };
 		if (mesh)
 		{
-			size_t shadingEngineCount {};
+			size_t shadingEngineCount{};
 			memcpy(&shadingEngineCount, msg + messageOffset, STSIZE);
 			messageOffset += STSIZE;
 
@@ -334,7 +337,7 @@ void DX::updateMeshShaders(char* msg)
 
 			for (size_t i = 0; i < shadingEngineCount; ++i)
 			{
-				size_t shadingEngineUuidSize {};
+				size_t shadingEngineUuidSize{};
 				std::string shadingEngineUuid{};
 				memcpy(&shadingEngineUuidSize, msg + messageOffset, STSIZE);
 				messageOffset += STSIZE;
@@ -366,34 +369,34 @@ void DX::addShaderEngineMaterials(char* msg)
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
-	NODETYPES::Node* node { this->findNode(uuid) };
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		NODETYPES::ShadingEngine* shadingEngine { dynamic_cast<NODETYPES::ShadingEngine*>(node) };
+		NODETYPES::ShadingEngine* shadingEngine{ dynamic_cast<NODETYPES::ShadingEngine*>(node) };
 		if (shadingEngine)
 		{
 			size_t materialCount{};
 			memcpy(&materialCount, msg + messageOffset, STSIZE);
 			messageOffset += STSIZE;
-			
+
 			std::vector<NODETYPES::Node*> materials{};
 
 			for (size_t i = 0; i < materialCount; ++i)
 			{
 				size_t materialUuidSize{};
 				std::string materialUuid{};
-				
+
 				memcpy(&materialUuidSize, msg + messageOffset, STSIZE);
 				messageOffset += STSIZE;
 				materialUuid.resize(materialUuidSize);
 				memcpy(&materialUuid[0], msg + messageOffset, materialUuidSize);
 				messageOffset += materialUuidSize;
 
-				NODETYPES::Node* materialNode{this->findNode(materialUuid)};
+				NODETYPES::Node* materialNode{ this->findNode(materialUuid) };
 				if (materialNode)
 				{
 					materials.emplace_back(materialNode);
-					materialNode->addNewReferenceBy(node,"shadingEngine");
+					materialNode->addNewReferenceBy(node, "shadingEngine");
 				}
 			}
 			shadingEngine->setMaterials(materials);
@@ -434,7 +437,6 @@ void DX::addMaterialTextures(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 					messageOffset += STSIZE;
 
 					std::vector<NODETYPES::Node*> textureUuids;
-					textureUuids.resize(connectedTextureCount);
 
 					size_t textureUuidSize{};
 					std::string textureUuid{};
@@ -466,7 +468,7 @@ void DX::addMaterialTextures(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 								//node is not a texture but a bump2d
 								textureNode->addNewReferenceBy(materialNode, "NormalMap");
 								break;
-							//case ComLib::ATTRIBUTE_TYPE::SHSPECULARMAP:
+								//case ComLib::ATTRIBUTE_TYPE::SHSPECULARMAP:
 							}
 						}
 					}
@@ -479,7 +481,6 @@ void DX::addMaterialTextures(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 				if (blinn)
 				{
 					std::vector<NODETYPES::Node*> textureUuids;
-					textureUuids.resize(connectedTextureCount);
 					blinn->setTextureConnected(textureConnected, attribute);
 
 					memcpy(&connectedTextureCount, msg + messageOffset, STSIZE);
@@ -525,29 +526,33 @@ void DX::addMaterialTextures(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 }
 void DX::addMaterialChannels(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 {
-	size_t messageOffset {};
+	size_t messageOffset{};
 
 	size_t uuidSize{};
 	std::string uuid{};
-	float container[3]{};
+	//float container[3]{};
+	uint32_t RGBA{};
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
 	uuid.resize(uuidSize);
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
-	memcpy(&container, msg + messageOffset, sizeof(float[3]));
-	messageOffset += sizeof(float[3]);
+	//memcpy(&container, msg + messageOffset, sizeof(float[3]));
+	//messageOffset += sizeof(float[3]);
+	memcpy(&RGBA, msg + messageOffset, sizeof(uint32_t));
+	messageOffset += sizeof(uint32_t);
 
 	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		if(node->getType() == "lambert")
+		if (node->getType() == "lambert")
 		{
 			NODETYPES::Lambert* lambert = dynamic_cast<NODETYPES::Lambert*>(node);
 			if (lambert)
 			{
-				lambert->setChannels(container, attribute);
+				//lambert->setChannels(container, attribute);
+				lambert->setChannels(RGBA, this->gDeviceContext.Get(), attribute);
 			}
 		}
 		else if (node->getType() == "blinn")
@@ -555,16 +560,17 @@ void DX::addMaterialChannels(char* msg, ComLib::ATTRIBUTE_TYPE attribute)
 			NODETYPES::Blinn* blinn = dynamic_cast<NODETYPES::Blinn*>(node);
 			if (blinn)
 			{
-				blinn->setChannels(container, attribute);
+				//blinn->setChannels(container, attribute);
+				blinn->setChannels(RGBA, this->gDeviceContext.Get(), attribute);
 			}
 		}
 	}
 }
 void DX::appendBumpShader(char* msg)
 {
-	size_t		messageOffset	{};
-	std::string	uuid			{};
-	size_t		uuidSize		{};
+	size_t		messageOffset{};
+	std::string	uuid{};
+	size_t		uuidSize{};
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
@@ -575,18 +581,18 @@ void DX::appendBumpShader(char* msg)
 	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		NODETYPES::Bump* bump {dynamic_cast<NODETYPES::Bump*>(node)};
+		NODETYPES::Bump* bump{ dynamic_cast<NODETYPES::Bump*>(node) };
 		if (bump)
 		{
-			std::string shaderUuid		{};
-			size_t		shaderUuidSize	{};
+			std::string shaderUuid{};
+			size_t		shaderUuidSize{};
 			memcpy(&shaderUuidSize, msg + messageOffset, STSIZE);
 			messageOffset += STSIZE;
 			shaderUuid.resize(shaderUuidSize);
 			memcpy(&shaderUuid[0], msg + messageOffset, shaderUuidSize);
-			messageOffset += shaderUuidSize;	
+			messageOffset += shaderUuidSize;
 
-			NODETYPES::Node* shaderNode{this->findNode(shaderUuid)};
+			NODETYPES::Node* shaderNode{ this->findNode(shaderUuid) };
 			if (shaderNode)
 			{
 				bump->addNewReferenceBy(node, "bump");
@@ -596,19 +602,19 @@ void DX::appendBumpShader(char* msg)
 }
 void DX::updateBump(char* msg)
 {
-	size_t		messageOffset	{};
+	size_t		messageOffset{};
 
-	std::string uuid			{};
-	size_t		uuidSize		{};
-	size_t		textureCount	{};
-	
+	std::string uuid{};
+	size_t		uuidSize{};
+	size_t		textureCount{};
+
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
 	uuid.resize(uuidSize);
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
-	NODETYPES::Node* node { this->findNode(uuid) };
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
 		memcpy(&textureCount, msg + messageOffset, STSIZE);
@@ -616,7 +622,6 @@ void DX::updateBump(char* msg)
 		if (textureCount)
 		{
 			std::vector<NODETYPES::Node*> textureUuids{};
-			textureUuids.resize(textureCount);
 			for (size_t i = 0; i < textureCount; ++i)
 			{
 				size_t textureUuidSize{};
@@ -650,21 +655,21 @@ void DX::updateBump(char* msg)
 }
 void DX::updateTexture(char* msg)
 {
-	size_t		messageOffset	{};
+	size_t		messageOffset{};
 
-	std::string uuid			{};
-	size_t		uuidSize		{};
-	bool		existingTexture	{};
-	std::string	path			{};
-	size_t		pathSize		{};
+	std::string uuid{};
+	size_t		uuidSize{};
+	bool		existingTexture{};
+	std::string	path{};
+	size_t		pathSize{};
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
 	uuid.resize(uuidSize);
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
-	
-	NODETYPES::Node* node { this->findNode(uuid) };
+
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
 		memcpy(&existingTexture, msg + messageOffset, sizeof(bool));
@@ -678,33 +683,34 @@ void DX::updateTexture(char* msg)
 			memcpy(&path[0], msg + messageOffset, pathSize);
 			messageOffset += pathSize;
 
-				NODETYPES::Texture* texture = dynamic_cast<NODETYPES::Texture*>(node);
-				if (texture)
-				{
-					texture->toggleExistTexture(existingTexture);
-					texture->setFilePath(path);
-				}
+			NODETYPES::Texture* texture = dynamic_cast<NODETYPES::Texture*>(node);
+			if (texture)
+			{
+				texture->toggleExistTexture(existingTexture);
+				texture->setFilePath(path);
+				texture->InitTexture(this->gDevice.Get(), this->gDeviceContext.Get(), path);
+			}
 		}
 	}
 }
 
 void DX::addParent(char* msg)
 {
-	size_t messageOffset {};
-	size_t targetUuidSize {};
-	std::string targetUuid {};
+	size_t messageOffset{};
+	size_t targetUuidSize{};
+	std::string targetUuid{};
 	memcpy(&targetUuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
 	targetUuid.resize(targetUuidSize);
 	memcpy(&targetUuid[0], msg + messageOffset, targetUuidSize);
 	messageOffset += targetUuidSize;
-	
-	NODETYPES::Node* node {this->findNode(targetUuid)};
+
+	NODETYPES::Node* node{ this->findNode(targetUuid) };
 	if (node)
 	{
-		std::string type {node->getType()};
-		size_t parentUuidSize {};
-		std::string parentUuid {};
+		std::string type{ node->getType() };
+		size_t parentUuidSize{};
+		std::string parentUuid{};
 
 		memcpy(&parentUuidSize, msg + messageOffset, STSIZE);
 		messageOffset += STSIZE;
@@ -712,37 +718,37 @@ void DX::addParent(char* msg)
 		memcpy(&parentUuid[0], msg + messageOffset, parentUuidSize);
 		messageOffset += parentUuidSize;
 
-		NODETYPES::Node* parentNode {this->findNode(parentUuid)};
+		NODETYPES::Node* parentNode{ this->findNode(parentUuid) };
 		if (parentNode)
 		{
 			if (type == "transform")
 			{
-				NODETYPES::Transform* transform {dynamic_cast<NODETYPES::Transform*>(node)};
+				NODETYPES::Transform* transform{ dynamic_cast<NODETYPES::Transform*>(node) };
 				transform->addParent(parentNode);
 			}
 			else if (type == "mesh")
 			{
-				NODETYPES::Mesh* mesh {dynamic_cast<NODETYPES::Mesh*>(node)};
+				NODETYPES::Mesh* mesh{ dynamic_cast<NODETYPES::Mesh*>(node) };
 				mesh->setTransform(parentNode);
 			}
 			else if (type == "pointLight")
 			{
-				NODETYPES::PointLight* pointLight {dynamic_cast<NODETYPES::PointLight*>(node)};
+				NODETYPES::PointLight* pointLight{ dynamic_cast<NODETYPES::PointLight*>(node) };
 				pointLight->setTransform(parentNode);
 			}
 			else if (type == "camera")
 			{
-				NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
-				camera->setViewMatrix(parentNode);
+				NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
+				camera->setTransformMatrix(parentNode);
 			}
 		}
 	}
 }
 void DX::removeParent(char* msg)
 {
-	size_t messageOffset {};
-	size_t targetUuidSize {};
-	std::string targetUuid {};
+	size_t messageOffset{};
+	size_t targetUuidSize{};
+	std::string targetUuid{};
 	memcpy(&targetUuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
 	targetUuid.resize(targetUuidSize);
@@ -783,14 +789,14 @@ void DX::removeParent(char* msg)
 			else if (type == "camera")
 			{
 				NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
-				camera->removeViewMatrixReference();
+				camera->removeTransformMatrixReference();
 			}
 		}
 	}
 }
 void DX::setActiveCamera(char* msg) {
-	size_t messageOffset {};
-	std::string uuid {};
+	size_t messageOffset{};
+	std::string uuid{};
 	size_t uuidSize{};
 
 	memcpy(&uuidSize, msg, STSIZE);
@@ -799,20 +805,25 @@ void DX::setActiveCamera(char* msg) {
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
-	NODETYPES::Node* node {this->findNode(uuid)};
+	double viewMatrix[4][4]{};
+	memcpy(&viewMatrix, msg + messageOffset, sizeof(double[4][4]));
+	messageOffset += sizeof(double[4][4]);
+
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
+		NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
 		if (camera)
 		{
 			this->activeCamera = camera;
+			this->activeCamera->setViewMatrix(viewMatrix);
 		}
 	}
 }
 void DX::allocateNode(char* msg)
 {
-	size_t messageOffset {};
-	
+	size_t messageOffset{};
+
 	size_t typeSize{};
 	std::string type{};
 	size_t nameSize{};
@@ -831,7 +842,7 @@ void DX::allocateNode(char* msg)
 	name.resize(nameSize);
 	memcpy(&name[0], msg + messageOffset, nameSize);
 	messageOffset += nameSize;
-	
+
 	memcpy(&uuidSize, msg + messageOffset, STSIZE);
 	messageOffset += STSIZE;
 	uuid.resize(uuidSize);
@@ -840,57 +851,58 @@ void DX::allocateNode(char* msg)
 
 	if (type == "transform") // NOTE: Change the rest
 	{
-		NODETYPES::Transform* transform{ new NODETYPES::Transform{name, uuid, "transform"}};
+		NODETYPES::Transform* transform{ new NODETYPES::Transform{name, uuid, "transform"} };
 		this->pureNodes.emplace_back(transform, uuid);
 		// Check if buffer needs extending
 		this->transforms.emplace_back(transform);
 	}
 	else if (type == "mesh")
 	{
-		NODETYPES::Mesh* mesh{ new NODETYPES::Mesh{name, uuid, "mesh"}};
+		NODETYPES::Mesh* mesh{ new NODETYPES::Mesh{name, uuid, "mesh"} };
 		this->pureNodes.emplace_back(mesh, uuid);
 		this->meshes.emplace_back(mesh);
 	}
 	else if (type == "pointLight")
 	{
-		NODETYPES::PointLight* pointLight{ new NODETYPES::PointLight{name, uuid, "mesh"}};
+		NODETYPES::PointLight* pointLight{ new NODETYPES::PointLight{name, uuid, "mesh"} };
 		this->pureNodes.emplace_back(pointLight, uuid);
 		this->pointLights.emplace_back(pointLight);
 	}
 	else if (type == "camera")
 	{
-		NODETYPES::Camera* camera{ new NODETYPES::Camera{name, uuid, "mesh"}};
+		NODETYPES::Camera* camera{ new NODETYPES::Camera{name, uuid, "mesh"} };
+		camera->setupBuffers(this->gDevice.Get());
 		this->pureNodes.emplace_back(camera, uuid);
 		this->cameras.emplace_back(camera);
 	}
 	else if (type == "shadingEngine")
 	{
-		NODETYPES::ShadingEngine* shadingEngine{ new NODETYPES::ShadingEngine{name, uuid, "shadingEngine"}};
+		NODETYPES::ShadingEngine* shadingEngine{ new NODETYPES::ShadingEngine{name, uuid, "shadingEngine"} };
 		this->pureNodes.emplace_back(shadingEngine, uuid);
 		this->shadingEngines.emplace_back(shadingEngine);
 	}
 	else if (type == "blinn")
 	{
-		NODETYPES::Blinn* blinn{ new NODETYPES::Blinn{name, uuid, "blinn"}};
+		NODETYPES::Blinn* blinn{ new NODETYPES::Blinn {name, uuid, this->gDevice.Get(), "blinn"} };
 		this->pureNodes.emplace_back(blinn, uuid);
 		this->blinns.emplace_back(blinn);
-		
+
 	}
 	else if (type == "lambert")
 	{
-		NODETYPES::Lambert* lambert{ new NODETYPES::Lambert{name, uuid, "lambert"}};
+		NODETYPES::Lambert* lambert{ new NODETYPES::Lambert{name, uuid, this->gDevice.Get(), "lambert"} };
 		this->pureNodes.emplace_back(lambert, uuid);
 		this->lamberts.emplace_back(lambert);
 	}
 	else if (type == "file")
 	{
-		NODETYPES::Texture* tex{ new NODETYPES::Texture{name, uuid, "texture"}};
+		NODETYPES::Texture* tex{ new NODETYPES::Texture{name, uuid, "texture"} };
 		this->pureNodes.emplace_back(tex, uuid);
 		this->textures.emplace_back(tex);
 	}
 	else if (type == "bump2d")
 	{
-		NODETYPES::Bump* bump{ new NODETYPES::Bump{name, uuid, "bump"}};
+		NODETYPES::Bump* bump{ new NODETYPES::Bump{name, uuid, "bump"} };
 		this->pureNodes.emplace_back(bump, uuid);
 		this->bumps.emplace_back(bump);
 	}
@@ -906,9 +918,9 @@ void DX::allocateNode(char* msg)
 
 }
 void DX::deallocateNode(char* msg) {
-	size_t messageOffset {};
-	size_t uuidSize {};
-	std::string uuid {};
+	size_t messageOffset{};
+	size_t uuidSize{};
+	std::string uuid{};
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
@@ -916,48 +928,77 @@ void DX::deallocateNode(char* msg) {
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
-	NODETYPES::Node* node {this->findNode(uuid)};
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
 		node->removeReferences();
-		
+
 		if (node->getType() == "transform") {
-			NODETYPES::Transform* transform {dynamic_cast<NODETYPES::Transform*>(node)};
+			NODETYPES::Transform* transform{ dynamic_cast<NODETYPES::Transform*>(node) };
 			transform->clearParents();
 			transform->clearChildren();
+			for (size_t i = 0; i < this->pureNodes.size(); ++i)
+			{
+				if (uuid == pureNodes.at(i).second)
+				{
+					pureNodes.erase(pureNodes.begin() + i);
+				}
+			}
+			for (size_t j = 0; j < this->transforms.size(); ++j)
+			{
+				if (transforms.at(j).get()->getUuid() == uuid)
+				{
+					transforms.erase(transforms.begin() + j);
+				}
+			}
 		}
 		else if (node->getType() == "mesh") {
-			NODETYPES::Mesh* mesh {dynamic_cast<NODETYPES::Mesh*>(node)};
+			NODETYPES::Mesh* mesh{ dynamic_cast<NODETYPES::Mesh*>(node) };
 			mesh->clearShadingEngines();
+
+			for (size_t i = 0; i < this->pureNodes.size(); ++i)
+			{
+				if (uuid == pureNodes.at(i).second)
+				{
+					pureNodes.erase(pureNodes.begin() + i);
+				}
+			}
+			for (size_t j = 0; j < this->meshes.size(); ++j)
+			{
+				if (meshes.at(j).get()->getUuid() == uuid)
+				{
+					meshes.erase(meshes.begin() + j);
+				}
+			}
 		}
 		else if (node->getType() == "pointLight") {
-			NODETYPES::PointLight* pointLight {dynamic_cast<NODETYPES::PointLight*>(node)};
+			NODETYPES::PointLight* pointLight{ dynamic_cast<NODETYPES::PointLight*>(node) };
 			pointLight->clearTransformReference();
 		}
 		else if (node->getType() == "camera") {
-			NODETYPES::Camera* camera {dynamic_cast<NODETYPES::Camera*>(node)};
-			camera->clearViewMatrixReference();
+			NODETYPES::Camera* camera{ dynamic_cast<NODETYPES::Camera*>(node) };
+			camera->clearTransformMatrixReference();
 		}
 		else if (node->getType() == "shadingEngine") {
-			NODETYPES::ShadingEngine* shadingEngine {dynamic_cast<NODETYPES::ShadingEngine*>(node)};
+			NODETYPES::ShadingEngine* shadingEngine{ dynamic_cast<NODETYPES::ShadingEngine*>(node) };
 			shadingEngine->clearMaterials();
 		}
 		else if (node->getType() == "blinn") {
-			NODETYPES::Blinn* blinn {dynamic_cast<NODETYPES::Blinn*>(node)};
+			NODETYPES::Blinn* blinn{ dynamic_cast<NODETYPES::Blinn*>(node) };
 			blinn->clearDiffuseMaps();
 			blinn->clearColorMaps();
 			blinn->clearTransparancyMaps();
 			blinn->clearNormalMaps();
 		}
 		else if (node->getType() == "lambert") {
-			NODETYPES::Lambert* lambert {dynamic_cast<NODETYPES::Lambert*>(node)};
+			NODETYPES::Lambert* lambert{ dynamic_cast<NODETYPES::Lambert*>(node) };
 			lambert->clearDiffuseMaps();
 			lambert->clearColorMaps();
 			lambert->clearTransparancyMaps();
 			lambert->clearNormalMaps();
 		}
 		else if (node->getType() == "bump2d") {
-			NODETYPES::Bump* bump {dynamic_cast<NODETYPES::Bump*>(node)};
+			NODETYPES::Bump* bump{ dynamic_cast<NODETYPES::Bump*>(node) };
 			bump->clearTextures();
 		}
 	}
@@ -974,15 +1015,15 @@ void DX::allocateVertex(char* msg)
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
-	NODETYPES::Node* node {this->findNode(uuid)};
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		NODETYPES::Mesh* mesh {dynamic_cast<NODETYPES::Mesh*>(node)};
+		NODETYPES::Mesh* mesh{ dynamic_cast<NODETYPES::Mesh*>(node) };
 		if (mesh)
 		{
-			UINT faceIndex {};
-			UINT vertexCount {};
-			UINT vertexIDCount {};
+			UINT faceIndex{};
+			UINT vertexCount{};
+			UINT vertexIDCount{};
 			memcpy(&faceIndex, msg + messageOffset, UINTSIZE);
 			messageOffset += UINTSIZE;
 			memcpy(&vertexCount, msg + messageOffset, UINTSIZE);
@@ -1001,9 +1042,9 @@ void DX::allocateVertex(char* msg)
 }
 void DX::allocateFaces(char* msg)
 {
-	size_t messageOffset	{};
-	size_t uuidSize			{};
-	std::string uuid		{};
+	size_t messageOffset{};
+	size_t uuidSize{};
+	std::string uuid{};
 
 	memcpy(&uuidSize, msg, STSIZE);
 	messageOffset += STSIZE;
@@ -1011,13 +1052,13 @@ void DX::allocateFaces(char* msg)
 	memcpy(&uuid[0], msg + messageOffset, uuidSize);
 	messageOffset += uuidSize;
 
-	NODETYPES::Node* node {this->findNode(uuid)};
+	NODETYPES::Node* node{ this->findNode(uuid) };
 	if (node)
 	{
-		NODETYPES::Mesh* mesh {dynamic_cast<NODETYPES::Mesh*>(node)};
+		NODETYPES::Mesh* mesh{ dynamic_cast<NODETYPES::Mesh*>(node) };
 		if (mesh)
 		{
-			UINT faceCount {};
+			UINT faceCount{};
 			memcpy(&faceCount, msg + messageOffset, UINTSIZE);
 			messageOffset += UINTSIZE;
 
@@ -1031,12 +1072,12 @@ void DX::allocateFaces(char* msg)
 HRESULT DX::loadingObjects()
 {
 	if (this->comlib->hFileMap)
-	{	
-		char* msg {this->comlib->recv()};
+	{
+		char* msg{ this->comlib->recv() };
 		if (msg)
 		{
-			char* data {msg + sizeof(ComLib::HEADER)};
-			ComLib::HEADER* header {reinterpret_cast<ComLib::HEADER*>(msg)};
+			char* data{ msg + sizeof(ComLib::HEADER) };
+			ComLib::HEADER* header{ reinterpret_cast<ComLib::HEADER*>(msg) };
 			switch (header->msgId)
 			{
 			case ComLib::MSG_TYPE::ACTIVECAM:
@@ -1048,10 +1089,10 @@ HRESULT DX::loadingObjects()
 					this->allocateNode(data);
 					break;
 				case ComLib::ATTRIBUTE_TYPE::VERTEX:
-				//case ComLib::ATTRIBUTE_TYPE::NORMAL:
-				//case ComLib::ATTRIBUTE_TYPE::UVSETS:
-				//case ComLib::ATTRIBUTE_TYPE::UVSET:
-				//case ComLib::ATTRIBUTE_TYPE::UVID:
+					//case ComLib::ATTRIBUTE_TYPE::NORMAL:
+					//case ComLib::ATTRIBUTE_TYPE::UVSETS:
+					//case ComLib::ATTRIBUTE_TYPE::UVSET:
+					//case ComLib::ATTRIBUTE_TYPE::UVID:
 					this->allocateVertex(data);
 					break;
 				case ComLib::ATTRIBUTE_TYPE::FACES:
@@ -1080,8 +1121,8 @@ HRESULT DX::loadingObjects()
 					break;
 				case ComLib::ATTRIBUTE_TYPE::VERTEX:
 				case ComLib::ATTRIBUTE_TYPE::VERTEXID:
-				//case ComLib::ATTRIBUTE_TYPE::NORMAL:
-				//case ComLib::ATTRIBUTE_TYPE::UV:
+					//case ComLib::ATTRIBUTE_TYPE::NORMAL:
+					//case ComLib::ATTRIBUTE_TYPE::UV:
 					this->updateList(data, header->attrID);
 					break;
 				case ComLib::ATTRIBUTE_TYPE::MESHTRANSFORMER:
@@ -1136,7 +1177,7 @@ HRESULT DX::loadingObjects()
 				case ComLib::ATTRIBUTE_TYPE::ATTREND:
 					this->comlib->mutex.Lock();
 					// Fetching size_t messageCount
-					size_t* messageCount {this->comlib->mSize - 1};
+					size_t* messageCount{ this->comlib->mSize - 1 };
 					*messageCount -= 1;
 					this->comlib->mutex.Unlock();
 					return S_OK;
@@ -1156,8 +1197,8 @@ HRESULT DX::queryExistingData()
 {
 	if (comlib->peekExistingMessage())
 	{
-		HRESULT fetching {E_FAIL};
-		char* msg {this->comlib->recv()};
+		HRESULT fetching{ E_FAIL };
+		char* msg{ this->comlib->recv() };
 		if (msg)
 		{
 			ComLib::HEADER* header{ reinterpret_cast<ComLib::HEADER*>(msg) };
@@ -1188,35 +1229,36 @@ HRESULT DX::queryExistingData()
 
 void DX::createDefaultTextures()
 {
-	HRESULT hr {};
+	HRESULT hr{};
 	D3D11_TEXTURE2D_DESC defaultTextureDesc{
-		.Width			{1},
-		.Height			{1},
-		.MipLevels		{1},
-		.ArraySize		{1},
-		.Format			{DXGI_FORMAT_R8G8B8A8_UNORM},
-		.Usage			{D3D11_USAGE_IMMUTABLE},
-		.BindFlags		{D3D11_BIND_SHADER_RESOURCE},
+				.Width			{1},
+				.Height			{1},
+				.MipLevels		{1},
+				.ArraySize		{1},
+				.Format			{DXGI_FORMAT_R8G8B8A8_UNORM},
+				.Usage			{D3D11_USAGE_IMMUTABLE},
+				.BindFlags		{D3D11_BIND_SHADER_RESOURCE},
 	};
 	defaultTextureDesc.SampleDesc.Count = 1;
 	static const uint32_t color = 0x8E8E8E;
 	D3D11_SUBRESOURCE_DATA dataPtr{ &color, sizeof(uint32_t), 0 };
-	hr = this->gDevice->CreateTexture2D(&defaultTextureDesc, &dataPtr, &this->defaultTextureMap);
+	hr = gDevice->CreateTexture2D(&defaultTextureDesc, &dataPtr, &this->defaultTextureMap);
 	if (FAILED(hr)) { exit(-1); }
+
 	D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc{
 		.Format {DXGI_FORMAT_R8G8B8A8_UNORM},
 		.ViewDimension {D3D11_SRV_DIMENSION_TEXTURE2D},
 	};
 	SRVDesc.Texture2D.MipLevels = 1;
-	hr = this->gDevice->CreateShaderResourceView(this->defaultTextureMap.Get(), &SRVDesc, &this->defaultTextureSRV);
+	hr = gDevice->CreateShaderResourceView(this->defaultTextureMap.Get(), &SRVDesc, &this->defaultTextureSRV);
 	if (FAILED(hr)) { exit(-1); }
 }
 void DX::CreateSamplerStates()
 {
-	HRESULT hr {};
+	HRESULT hr{};
 
 	//Diffuse Sampler State
-	D3D11_SAMPLER_DESC texSampDesc {
+	D3D11_SAMPLER_DESC texSampDesc{
 	.Filter {D3D11_FILTER_MIN_MAG_MIP_POINT},
 	.AddressU {D3D11_TEXTURE_ADDRESS_CLAMP},
 	.AddressV {D3D11_TEXTURE_ADDRESS_CLAMP},
@@ -1229,14 +1271,61 @@ void DX::CreateSamplerStates()
 	};
 
 	hr = this->gDevice->CreateSamplerState(&texSampDesc, &this->txSamplerState);
-	if (FAILED(hr)){
+	if (FAILED(hr)) {
 		exit(-1);
 	}
 }
+void DX::CreateLightPassQuad()
+{
+	NODETYPES::Mesh* mesh{ new NODETYPES::Mesh{"lightQuad", "0001", "quad"} };
+	this->pureNodes.emplace_back(mesh, "0001");
+	this->lightQuads.emplace_back(mesh);
+
+	std::vector<NODETYPES::Mesh::VERTEX> vertexList{
+		NODETYPES::Mesh::VERTEX {
+			-960.f, -540.f, 0.1f,
+			0.0f, 0.0f, -1.0f,
+			1.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f,
+			0.0f, 0.0f
+		},
+		NODETYPES::Mesh::VERTEX {
+			 -960.f, 540.f, 0.1f,
+			0.0f, 0.0f, -1.0f,
+			1.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f,
+			0.0f, 0.0f
+		},
+		NODETYPES::Mesh::VERTEX {
+			960.f, -540.f, 0.1f,
+			0.0f, 0.0f, -1.0f,
+			1.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f,
+			0.0f, 0.0f
+		},
+		NODETYPES::Mesh::VERTEX {
+			960.f, 540.f, 0.1f,
+			0.0f, 0.0f, -1.0f,
+			1.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f,
+			0.0f, 0.0f
+		},
+	};
+
+	std::vector<UINT32> vertexIDs{ 0, 2, 1, 1, 2, 3 };
+
+	this->lightQuads[0].get()->allocateFaces(1);
+	this->lightQuads[0].get()->allocateVertices(this->gDevice.Get(), 0, 4, 6);
+	this->lightQuads[0].get()->updateList(0, 4, 3, vertexList);
+	this->lightQuads[0].get()->updateList(0, 6, 5, vertexIDs);
+
+	this->lightQuads[0].get()->updateVertexListToBuffer(0, this->gDeviceContext.Get());
+	this->lightQuads[0].get()->updateVertexIDToBuffer(0, this->gDeviceContext.Get());
+}
 void DX::CreateBuffers()
 {
-	HRESULT hr {};
-	
+	HRESULT hr{};
+
 	//#############################################################
 	//#						Camera buffer 						  #
 	//#############################################################
@@ -1268,7 +1357,7 @@ void DX::CreateBuffers()
 		.StructureByteStride {}
 	};
 	hr = gDevice->CreateBuffer(&transformBufferDesc, nullptr, &this->transformBuffer);
-	if (FAILED(hr)) { exit(-1);}
+	if (FAILED(hr)) { exit(-1); }
 
 	//#############################################################
 	//#						PointLight buffers					  #
@@ -1288,16 +1377,13 @@ void DX::CreateBuffers()
 
 HRESULT DX::CreateInputLayout(D3D11_INPUT_ELEMENT_DESC inputDesc[], UINT arraySize, ID3DBlob* VS)
 {
-	size_t test1 {VS->GetBufferSize()};
-	LPVOID test2 = {VS->GetBufferPointer()};
-
 	return this->gDevice->CreateInputLayout(inputDesc, arraySize, VS->GetBufferPointer(), VS->GetBufferSize(), &this->gVertexLayout);
 }
 HRESULT DX::CreateVertexShader(LPCWSTR fileName, LPCSTR entryPoint, D3D11_INPUT_ELEMENT_DESC inputDesc[], UINT arraySize, ID3D11VertexShader*& vertexShader)
 {
-	HRESULT hr {};
-	ComPtr<ID3DBlob> error { nullptr };
-	ComPtr<ID3DBlob> VS { nullptr };
+	HRESULT hr{};
+	ComPtr<ID3DBlob> error{ nullptr };
+	ComPtr<ID3DBlob> VS{ nullptr };
 
 	hr = D3DCompileFromFile(
 		fileName,
@@ -1331,9 +1417,9 @@ HRESULT DX::CreateVertexShader(LPCWSTR fileName, LPCSTR entryPoint, D3D11_INPUT_
 }
 HRESULT DX::CreateGeometryShader(LPCWSTR fileName, LPCSTR entryPoint, ID3D11GeometryShader*& geometricShader)
 {
-	HRESULT hr {};
-	ComPtr<ID3DBlob> error { nullptr };
-	ComPtr<ID3DBlob> GS { nullptr };
+	HRESULT hr{};
+	ComPtr<ID3DBlob> error{ nullptr };
+	ComPtr<ID3DBlob> GS{ nullptr };
 
 	hr = D3DCompileFromFile(
 		fileName,
@@ -1359,8 +1445,8 @@ HRESULT DX::CreateGeometryShader(LPCWSTR fileName, LPCSTR entryPoint, ID3D11Geom
 HRESULT DX::CreatePixelShader(LPCWSTR fileName, LPCSTR entryPoint, ID3D11PixelShader*& pixelShader)
 {
 	HRESULT hr{};
-	ComPtr<ID3DBlob> error { nullptr };
-	ComPtr<ID3DBlob> PS { nullptr };
+	ComPtr<ID3DBlob> error{ nullptr };
+	ComPtr<ID3DBlob> PS{ nullptr };
 
 	hr = D3DCompileFromFile(
 		fileName,
@@ -1384,24 +1470,26 @@ HRESULT DX::CreatePixelShader(LPCWSTR fileName, LPCSTR entryPoint, ID3D11PixelSh
 	}
 }
 void DX::CreateShaders()
-{	
-	D3D11_INPUT_ELEMENT_DESC inputDesc[] = {
+{
+	D3D11_INPUT_ELEMENT_DESC inputDesc[]{
 	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	{ "BINORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
 	};
-	
+
 	if (FAILED(this->CreateVertexShader(L"G-Buffer_VertexShader.hlsl", "VS_main", inputDesc, ARRAYSIZE(inputDesc), *this->gGBufferVertexShader.GetAddressOf())))
 	{
 		OutputDebugStringA("Failed to setup vertex shader!");
 		exit(-1);
 	}
-	
+	/*
 	if (FAILED(this->CreateGeometryShader(L"G-Buffer_GeometryShader.hlsl", "GS_main", *this->gGBufferGeometryShader.GetAddressOf())))
 	{
 		OutputDebugStringA("Failed to create geometry shader!");
 		exit(-1);
-	}
+	}*/
 
 	if (FAILED(this->CreatePixelShader(L"G-Buffer_PixelShader.hlsl", "PS_main", *this->gGBufferPixelShader.GetAddressOf())))
 	{
@@ -1416,15 +1504,25 @@ void DX::CreateShaders()
 	}
 }
 
+void DX::setScissorRect()
+{
+	D3D11_RECT rects[1];
+	rects[0].left = 0;
+	rects[0].right = (long)WIDTH;
+	rects[0].top = 0;
+	rects[0].bottom = (long)HEIGHT;
+
+	this->gDeviceContext->RSSetScissorRects(1, rects);
+}
 void DX::setViewPort()
 {
 	D3D11_VIEWPORT vp{
-	.TopLeftX = 0,
-	.TopLeftY = 0,
-	.Width = WIDTH,
-	.Height = HEIGHT,
-	.MinDepth = 0.f,
-	.MaxDepth = 1.f
+		.TopLeftX = 0,
+		.TopLeftY = 0,
+		.Width = WIDTH,
+		.Height = HEIGHT,
+		.MinDepth = 0.0f,
+		.MaxDepth = 1.0f
 	};
 
 	this->gDeviceContext->RSSetViewports(1, &vp);
@@ -1432,19 +1530,25 @@ void DX::setViewPort()
 
 HRESULT DX::CreateDeviceSwapchain(HWND* wndHandle)
 {
-	DXGI_SWAP_CHAIN_DESC swapDesc{};
-	swapDesc.BufferCount = 2;
-	swapDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	swapDesc.BufferDesc.Width = static_cast<UINT>(WIDTH);
-	swapDesc.BufferDesc.Height = static_cast<UINT>(HEIGHT);
-	swapDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	swapDesc.Windowed = TRUE;
-	swapDesc.OutputWindow = *wndHandle;
-	swapDesc.SampleDesc.Count = PIXELSAMPLE;
-	swapDesc.SampleDesc.Quality = 0;
+	DXGI_MODE_DESC swapModeDesc{
+		.Width {static_cast<UINT>(WIDTH)},
+		.Height {static_cast<UINT>(HEIGHT)},
+		.Format {DXGI_FORMAT_R8G8B8A8_UNORM}
+	};
+	DXGI_SAMPLE_DESC sampleDesc{
+		.Count {PIXELSAMPLE}
+	};
+	DXGI_SWAP_CHAIN_DESC swapDesc{
+		.BufferDesc {swapModeDesc},
+		.SampleDesc {sampleDesc},
+		.BufferUsage {DXGI_USAGE_RENDER_TARGET_OUTPUT},
+		.BufferCount {2},
+		.OutputWindow {*wndHandle},
+		.Windowed {TRUE},
+		.SwapEffect {DXGI_SWAP_EFFECT_FLIP_DISCARD}
+	};
 
- return D3D11CreateDeviceAndSwapChain(
+	return D3D11CreateDeviceAndSwapChain(
 		nullptr,
 		D3D_DRIVER_TYPE_HARDWARE,
 		nullptr,
@@ -1460,30 +1564,57 @@ HRESULT DX::CreateDeviceSwapchain(HWND* wndHandle)
 }
 HRESULT DX::CreateDepthBuffer(int index)
 {
-	D3D11_TEXTURE2D_DESC depthBufferDesc {};
-	depthBufferDesc.Width = static_cast<UINT>(WIDTH);
-	depthBufferDesc.Height = static_cast<UINT>(HEIGHT);
-	depthBufferDesc.MipLevels = 1;
-	depthBufferDesc.ArraySize = 1;
-	depthBufferDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	depthBufferDesc.SampleDesc.Count = PIXELSAMPLE;
-	depthBufferDesc.SampleDesc.Quality = 0;
-	depthBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-	depthBufferDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-	depthBufferDesc.MiscFlags = 0;
+	DXGI_SAMPLE_DESC sampleDesc{
+		.Count {PIXELSAMPLE},
+	};
+	D3D11_TEXTURE2D_DESC depthBufferDesc{
+		.Width {static_cast<UINT>(WIDTH)},
+		.Height {static_cast<UINT>(HEIGHT)},
+		.MipLevels {1},
+		.ArraySize {1},
+		.Format {DXGI_FORMAT_D24_UNORM_S8_UINT},
+		.SampleDesc {sampleDesc},
+		.Usage {D3D11_USAGE_DEFAULT},
+		.BindFlags {D3D11_BIND_DEPTH_STENCIL},
+	};
 
 	return this->gDevice->CreateTexture2D(&depthBufferDesc, nullptr, &this->gDepthStencil[index]);
 }
 HRESULT DX::CreateDepthStencil(int index, ID3D11Texture2D* pBackBuffer)
 {
-	this->gSwapchain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
-
-	D3D11_DEPTH_STENCIL_VIEW_DESC descDSV {
-		.Format {DXGI_FORMAT_D32_FLOAT},
-		.ViewDimension {D3D11_DSV_DIMENSION_TEXTURE2D},
+	D3D11_DEPTH_STENCIL_VIEW_DESC descDSV{
+		.Format {DXGI_FORMAT_D24_UNORM_S8_UINT},
+		.ViewDimension {D3D11_DSV_DIMENSION_TEXTURE2D}
 	};
 
-	return this->gDevice->CreateDepthStencilView(this->gDepthStencil[index].Get(), nullptr, &this->gDepthStencilView[index]);
+	return this->gDevice->CreateDepthStencilView(this->gDepthStencil[index].Get(), &descDSV, &this->gDepthStencilView[index]);
+}
+HRESULT DX::CreateDepthStencilState()
+{
+	D3D11_DEPTH_STENCILOP_DESC dsFrontFaceOPDesc{
+		.StencilFailOp {D3D11_STENCIL_OP_KEEP},
+		.StencilDepthFailOp {D3D11_STENCIL_OP_INCR},
+		.StencilPassOp {D3D11_STENCIL_OP_KEEP},
+		.StencilFunc {D3D11_COMPARISON_ALWAYS}
+	};
+	D3D11_DEPTH_STENCILOP_DESC dsBackFaceOPDesc{
+		.StencilFailOp {D3D11_STENCIL_OP_KEEP},
+		.StencilDepthFailOp {D3D11_STENCIL_OP_DECR},
+		.StencilPassOp {D3D11_STENCIL_OP_KEEP},
+		.StencilFunc {D3D11_COMPARISON_ALWAYS}
+	};
+	D3D11_DEPTH_STENCIL_DESC dsStateDesc{
+		.DepthEnable {true},
+		.DepthWriteMask {D3D11_DEPTH_WRITE_MASK_ALL},
+		.DepthFunc {D3D11_COMPARISON_LESS},
+		.StencilEnable {true},
+		.StencilReadMask {0xFF}, // 0xFF == 250 + 5 (255)
+		.StencilWriteMask {0xFF},
+		.FrontFace {dsFrontFaceOPDesc},
+		.BackFace {dsBackFaceOPDesc}
+	};
+
+	return this->gDevice->CreateDepthStencilState(&dsStateDesc, this->gDepthStencilState.GetAddressOf());
 }
 HRESULT DX::CreateGBufferResources()
 {
@@ -1514,7 +1645,7 @@ HRESULT DX::CreateGBufferResources()
 		if (FAILED(hr)) { return hr; }
 	}
 
-	D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc {
+	D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc{
 		.Format {DXGI_FORMAT_R32G32B32A32_FLOAT},
 		.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D
 	};
@@ -1531,24 +1662,22 @@ HRESULT DX::CreateRasterizerState()
 {
 	D3D11_RASTERIZER_DESC rasDesc{
 		.FillMode {D3D11_FILL_SOLID},
-		.CullMode = {D3D11_CULL_BACK},
-		.FrontCounterClockwise {},
+		.CullMode = {D3D11_CULL_NONE},
+		.FrontCounterClockwise {true},
 		.DepthBias {},
 		.DepthBiasClamp {},
 		.SlopeScaledDepthBias {},
 		.DepthClipEnable {true},
-		.ScissorEnable {},
+		.ScissorEnable {true},
 		.MultisampleEnable {},
 		.AntialiasedLineEnable {}
 	};
-
 	return this->gDevice->CreateRasterizerState(&rasDesc, this->gRasterizerState.GetAddressOf());
 }
 void DX::CreateDirect3DContext(HWND* wndHandle)
 {
-	HRESULT hr {};
+	HRESULT hr{};
 	CoInitialize(nullptr);
-
 
 	if (SUCCEEDED(this->CreateDeviceSwapchain(wndHandle)))
 	{
@@ -1579,8 +1708,13 @@ void DX::CreateDirect3DContext(HWND* wndHandle)
 				exit(-1);
 			}
 		}
-		this->gDeviceContext->OMSetRenderTargets(1, this->gBackbufferRTV[0].GetAddressOf(), this->gDepthStencilView[0].Get());
-		
+
+		//if (FAILED(this->CreateDepthStencilState()))
+		//{
+		//	OutputDebugStringA("Failed to create depth stencil state!");
+		//	exit(-1);
+		//}
+
 		if (FAILED(this->CreateGBufferResources()))
 		{
 			OutputDebugStringA("Failed to create G-Buffer resources!");
@@ -1600,6 +1734,8 @@ void DX::CreateDirect3DContext(HWND* wndHandle)
 		OutputDebugStringA("Failed to create raster state!");
 		exit(-1);
 	}
+
+
 }
 
 void DX::OfflineCreation(HMODULE hModule, HWND* wndHandle)
@@ -1607,15 +1743,17 @@ void DX::OfflineCreation(HMODULE hModule, HWND* wndHandle)
 	//send connected (default 1 in ComLib, changed to 0 when crash)
 	this->CreateDirect3DContext(wndHandle);
 	this->setViewPort();
+	this->setScissorRect();
 	this->CreateShaders();
 	this->CreateBuffers();
+	this->CreateLightPassQuad();
 	this->CreateSamplerStates();
 	this->createDefaultTextures();
 
 	//Set-up ComLib and fetch data
 	if (SUCCEEDED(this->comlib->connectionStatus->sendPulse(Connection_Status::CONNECTION_TYPE::CONNECTED)))
 	{
-		HRESULT fetching {E_FAIL};
+		HRESULT fetching{ E_FAIL };
 		while (FAILED(fetching)) {
 			fetching = this->queryExistingData();
 		}
@@ -1639,7 +1777,7 @@ void DX::Update()
 				HRESULT fetching{ E_FAIL };
 				ComLib::HEADER* header{ reinterpret_cast<ComLib::HEADER*>(msg) };
 
- 				switch (header->msgId)
+				switch (header->msgId)
 				{
 				case ComLib::MSG_TYPE::MESSAGE:
 					switch (header->attrID)
@@ -1649,14 +1787,14 @@ void DX::Update()
 						while (FAILED(fetching))
 						{
 							fetching = loadingObjects();
-							this->Render();
 						}
+						this->Render();
 						break;
 					}
 					break;
 				default:
 					break;
-				}								
+				}
 			}
 		}
 	}
@@ -1666,14 +1804,14 @@ void DX::updateVertexBuffers(UINT meshIndex, UINT faceIndex) {
 	this->meshes[meshIndex].get()->updateVertexListToBuffer(faceIndex, this->gDeviceContext.Get());
 	this->meshes[meshIndex].get()->updateVertexIDToBuffer(faceIndex, this->gDeviceContext.Get());
 }
-void DX::UpdatePointLightBuffers() 
+void DX::UpdatePointLightBuffers()
 {
 	if (this->pointLights.size() <= 20)
 		this->activePointLights.pointLightCount = static_cast<UINT32>(this->pointLights.size());
 	else
 		this->activePointLights.pointLightCount = 20;
 
-	D3D11_MAPPED_SUBRESOURCE dataPtr {};
+	D3D11_MAPPED_SUBRESOURCE dataPtr{};
 	this->gDeviceContext->Map(this->pointLightDataBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
 	for (size_t i = 0; i < this->activePointLights.pointLightCount; ++i)
 	{
@@ -1686,12 +1824,12 @@ void DX::UpdatePointLightBuffers()
 }
 void DX::RenderLightPass()
 {
-	this->gDeviceContext->OMSetRenderTargets(1, this->gBackbufferRTV[this->currentFrame].GetAddressOf(), this->gDepthStencilView[this->currentFrame].Get());
+	this->gDeviceContext->OMSetRenderTargets(1, this->gBackbufferRTV[this->currentFrame].GetAddressOf(), nullptr);
 
 	this->gDeviceContext->VSSetShader(this->gGBufferVertexShader.Get(), nullptr, 0);
 	this->gDeviceContext->GSSetShader(nullptr, nullptr, 0);
 	this->gDeviceContext->PSSetShader(this->gLightPassShader.Get(), nullptr, 0);
-	
+
 	this->UpdatePointLightBuffers();
 	this->gDeviceContext->PSSetConstantBuffers(0, 1, this->cameraBuffer[0].GetAddressOf());
 	this->gDeviceContext->PSSetConstantBuffers(1, 1, this->pointLightDataBuffer.GetAddressOf());
@@ -1702,13 +1840,13 @@ void DX::RenderLightPass()
 
 	this->gDeviceContext->PSSetSamplers(0, 1, this->txSamplerState.GetAddressOf());
 
-	for (UINT i = 0; i < this->meshes.size(); ++i)
+	for (UINT i = 0; i < this->lightQuads.size(); ++i)
 	{
-		for (UINT j = 0; j < meshes[i].get()->getFaceCount(); ++j)
+		for (UINT j = 0; j < lightQuads[i].get()->getFaceCount(); ++j)
 		{
-			UINT32 vertexCount{ this->meshes[i].get()->getVertexCount(j) };
-			ID3D11Buffer* vertexBuffer{ this->meshes[i].get()->getVertexBuffer(j) };
-			ID3D11Buffer* vertexIDBuffer{ this->meshes[i].get()->getVertexIDBuffer(j) };
+			UINT32 vertexCount{ this->lightQuads[i].get()->getVertexCount(j) };
+			ID3D11Buffer* vertexBuffer{ this->lightQuads[i].get()->getVertexBuffer(j) };
+			ID3D11Buffer* vertexIDBuffer{ this->lightQuads[i].get()->getVertexIDBuffer(j) };
 
 			UINT vertexStride{ sizeof(NODETYPES::Mesh::VERTEX) };
 			UINT vertexOffset{};
@@ -1733,7 +1871,6 @@ void DX::clearRender()
 	float clearColor[] = { 0.f, 0.f, 0.0f, 1.0f };
 
 	this->gDeviceContext->ClearRenderTargetView(this->gBackbufferRTV[this->currentFrame].Get(), clearColor);
-	this->gDeviceContext->ClearDepthStencilView(this->gDepthStencilView[this->currentFrame].Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 }
 void DX::updateGBufferShaders(size_t i)
 {
@@ -1741,36 +1878,40 @@ void DX::updateGBufferShaders(size_t i)
 	{
 		if (this->meshes[i].get()->existDiffuse())
 		{
-			ID3D11ShaderResourceView* DiffuseSRV{ this->meshes[i]->getDiffuseBuffer() };
-			if (DiffuseSRV)
+			ID3D11ShaderResourceView* diffuseSRV{ this->meshes[i]->getDiffuseBuffer() };
+			if (diffuseSRV)
 			{
-				this->gDeviceContext->PSSetShaderResources(0, 1, &DiffuseSRV);
+				this->gDeviceContext->PSSetShaderResources(0, 1, &diffuseSRV);
 			}
 			else
 			{
-				this->gDeviceContext->PSSetShaderResources(0, 1, this->defaultTextureSRV.GetAddressOf());
+				ID3D11ShaderResourceView* defaultSRV{ this->meshes[i]->getDefaultDiffuseBuffer() };
+				this->gDeviceContext->PSSetShaderResources(0, 1, &defaultSRV);
 			}
 		}
 		else
 		{
-			this->gDeviceContext->PSSetShaderResources(0, 1, this->defaultTextureSRV.GetAddressOf());
+			ID3D11ShaderResourceView* defaultSRV{ this->meshes[i]->getDefaultDiffuseBuffer() };
+			this->gDeviceContext->PSSetShaderResources(0, 1, &defaultSRV);
 		}
 
 		if (this->meshes[i].get()->existNormal())
 		{
-			ID3D11ShaderResourceView* NormalSRV{ this->meshes[i]->getNormalBuffer() };
-			if (NormalSRV)
+			ID3D11ShaderResourceView* normalSRV{ this->meshes[i]->getNormalBuffer() };
+			if (normalSRV)
 			{
-				this->gDeviceContext->PSSetShaderResources(1, 1, &NormalSRV);
+				this->gDeviceContext->PSSetShaderResources(1, 1, &normalSRV);
 			}
 			else
 			{
-				this->gDeviceContext->PSSetShaderResources(1, 1, this->defaultTextureSRV.GetAddressOf());
+				ID3D11ShaderResourceView* defaultSRV{ this->meshes[i]->getDefaultNormalBuffer() };
+				this->gDeviceContext->PSSetShaderResources(1, 1, &defaultSRV);
 			}
 		}
 		else
 		{
-			this->gDeviceContext->PSSetShaderResources(1, 1, this->defaultTextureSRV.GetAddressOf());
+			ID3D11ShaderResourceView* defaultSRV{ this->meshes[i]->getDefaultNormalBuffer() };
+			this->gDeviceContext->PSSetShaderResources(1, 1, &defaultSRV);
 		}
 	}
 	else
@@ -1781,18 +1922,17 @@ void DX::updateGBufferShaders(size_t i)
 }
 void DX::UpdateTransformBuffer(size_t index)
 {
-	D3D11_MAPPED_SUBRESOURCE dataPtr {};
-
+	D3D11_MAPPED_SUBRESOURCE dataPtr{};
 	this->gDeviceContext->Map(this->transformBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
 	memcpy(dataPtr.pData, this->meshes[index].get()->getTransformWorld(), sizeof(DirectX::XMMATRIX));
 	this->gDeviceContext->Unmap(this->transformBuffer.Get(), 0);
 }
 void DX::UpdateCameraBuffers()
 {
-	D3D11_MAPPED_SUBRESOURCE dataPtr {};
+	D3D11_MAPPED_SUBRESOURCE dataPtr{};
 
 	this->gDeviceContext->Map(this->cameraBuffer[0].Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
-	memcpy(dataPtr.pData, this->activeCamera->getViewMatix(), sizeof(DirectX::XMMATRIX));
+	memcpy(dataPtr.pData, this->activeCamera->getViewMatrix(), sizeof(DirectX::XMMATRIX));
 	this->gDeviceContext->Unmap(this->cameraBuffer[0].Get(), 0);
 	ZeroMemory(&dataPtr, sizeof(dataPtr));
 
@@ -1803,11 +1943,12 @@ void DX::UpdateCameraBuffers()
 void DX::RenderGBuffer()
 {
 	this->gDeviceContext->OMSetRenderTargets(3, this->gGBufferRTVs->GetAddressOf(), this->gDepthStencilView[this->currentFrame].Get());
+	//this->gDeviceContext->OMSetDepthStencilState(this->gDepthStencilState.Get(), 1);
 
 	this->gDeviceContext->VSSetShader(this->gGBufferVertexShader.Get(), nullptr, 0);
-	this->gDeviceContext->GSSetShader(this->gGBufferGeometryShader.Get(), nullptr, 0);
+	//this->gDeviceContext->GSSetShader(this->gGBufferGeometryShader.Get(), nullptr, 0);
 	this->gDeviceContext->PSSetShader(this->gGBufferPixelShader.Get(), nullptr, 0);
-	
+
 	this->gDeviceContext->PSSetSamplers(0, 1, this->txSamplerState.GetAddressOf());
 
 	this->UpdateCameraBuffers();
@@ -1816,15 +1957,15 @@ void DX::RenderGBuffer()
 	{
 		this->UpdateTransformBuffer(i);
 		this->updateGBufferShaders(i);
-		
-		this->gDeviceContext->GSSetConstantBuffers(0, 1, this->cameraBuffer[0].GetAddressOf());
-		this->gDeviceContext->GSSetConstantBuffers(1, 1, this->cameraBuffer[1].GetAddressOf());
-		this->gDeviceContext->GSSetConstantBuffers(2, 1, this->transformBuffer.GetAddressOf());
+
+		this->gDeviceContext->VSSetConstantBuffers(0, 1, this->cameraBuffer[0].GetAddressOf());
+		this->gDeviceContext->VSSetConstantBuffers(1, 1, this->cameraBuffer[1].GetAddressOf());
+		this->gDeviceContext->VSSetConstantBuffers(2, 1, this->transformBuffer.GetAddressOf());
 
 		for (UINT j = 0; j < meshes[i].get()->getFaceCount(); ++j)
 		{
 			this->updateVertexBuffers(i, j);
-			
+
 			UINT32 vertexCount{ this->meshes[i].get()->getVertexCount(j) };
 			ID3D11Buffer* vertexBuffer{ this->meshes[i].get()->getVertexBuffer(j) };
 			ID3D11Buffer* vertexIDBuffer{ this->meshes[i].get()->getVertexIDBuffer(j) };
@@ -1838,17 +1979,22 @@ void DX::RenderGBuffer()
 		}
 	}
 
-	ID3D11ShaderResourceView* nullSRV {};
+	ID3D11ShaderResourceView* nullSRV{};
 	this->gDeviceContext->PSSetShaderResources(0, 1, &this->nullSRV);
 	this->gDeviceContext->PSSetShaderResources(1, 1, &this->nullSRV);
 }
 void DX::ClearGBufferTargets()
 {
-	float clearColor[] = { 0.17f, 0.84f, 0.9f, 1.0f };
+	//Bugged (color makes light shine clear color over whole background)
+	float clearColor[]{ 0.f, 0.f, 0.f, 1.0f };
+	float clearColor2[]{ 0.5f, 0.5f, 0.5f, 1.0f };
+	//float clearColor3[]{ 0.0f, 0.0f, 0.0f, 1.0f };
 
 	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[0].Get(), clearColor);
-	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[1].Get(), clearColor);
+	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[1].Get(), clearColor2);
 	this->gDeviceContext->ClearRenderTargetView(this->gGBufferRTVs[2].Get(), clearColor);
+
+	this->gDeviceContext->ClearDepthStencilView(this->gDepthStencilView[this->currentFrame].Get(), D3D11_CLEAR_DEPTH /*| D3D11_CLEAR_STENCIL*/, 1.0f, 0);
 }
 void DX::Render()
 {
@@ -1858,8 +2004,8 @@ void DX::Render()
 	this->ClearGBufferTargets();
 	this->RenderGBuffer();
 
-	//this->clearRender();
-	//this->RenderLightPass();
+	this->clearRender();
+	this->RenderLightPass();
 
 	this->gSwapchain->Present(0, 0);
 }
