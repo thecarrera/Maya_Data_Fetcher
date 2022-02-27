@@ -76,13 +76,14 @@ void GS_main( triangle GS_IN input[3], inout TriangleStream<GS_OUT> OutputStream
     texUVs = inverseMat(det, texUVs);
 	
     float2x3 objTB = matriceMult(texUVs, faceEdges);
-    float3 objTan = { objTB._m00, objTB._m01, objTB._m02 };
-    float3 objBTan = { objTB._m10, objTB._m11, objTB._m12 };
+    float3 objTan = { objTB._m00, objTB._m01, -objTB._m02 };
+    float3 objBTan = { objTB._m10, objTB._m11, -objTB._m12 };
 
     for (int i = 0; i < 3; ++i)
     {
         output.Pos = mul(mul(mul(input[i].Pos, worldMat), viewMat), projMat);
         output.Norm = float4(input[i].Norm, 1.0f);
+        //output.Norm = float4(0.5f, 0.5f, 1.0f, 1.0f);
         output.UV = input[i].UV;
         output.wPos = float4(mul(input[i].Pos, worldMat).xyz, 1.0f);
         output.oTangent = objTan;

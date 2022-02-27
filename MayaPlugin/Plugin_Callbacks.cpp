@@ -130,6 +130,7 @@
 #include <array>
 #include <DirectXMath.h>
 
+//Make a vector of union, connect callbacks to nodes and uuids, [0] is initialize callbacks
 MCallbackIdArray myCallbackArray;
 ComLib comlib("sharedFileMap", (25ULL << 23ULL)); //200MB
 
@@ -302,22 +303,64 @@ void pPrintMatrix(DirectX::XMMATRIX mat)
 }
 
 //General Micro Data
-void pSendActiveCamera(MFnDagNode& camDAG)
+void pSendActiveCamera()
 {
 	MString debugString {};
+	M3dView sceneView{ sceneView.active3dView() };
+	MDagPath camShapeDagPath{};
+	sceneView.getCamera(camShapeDagPath);
+	MFnDagNode camDAG{ camShapeDagPath.node() };
+	MFnCamera cam {camDAG.object()};
+
 	std::string uuid {camDAG.uuid().asString().asChar()};
 	size_t uuidSize {uuid.size()};
 	std::vector<char> msg {};
 	size_t messageSize {};
-	
+	//MMatrix viewMat {camShapeDagPath.inclusiveMatrix().transpose()};
+
+	//Fetch the camera view matrix through the viewport instead of the camera.
+	//Camera will give you a matrix with Translation -> Rotation order.
+	//modelViewMatrix will give you Rotation -> Translation order.
+	//Cons: We are forced to update the view matrix every render pass even though the camera isn't moving.
+	//      NOTE: Figure out if there's a way to connect a callback for this view matrix specifically.
+	//            We only want to update when the matrix has actually changed.
+	MMatrix viewMat;
+	sceneView.modelViewMatrix(viewMat);
+	viewMat = viewMat.transpose();
+	double viewMatrix[4][4] {
+		viewMat.matrix[0][0],
+		viewMat.matrix[0][1],
+		viewMat.matrix[0][2],
+		viewMat.matrix[0][3],
+
+		viewMat.matrix[1][0],
+		viewMat.matrix[1][1],
+		viewMat.matrix[1][2],
+		viewMat.matrix[1][3],
+
+		viewMat.matrix[2][0] * -1.0f,
+		viewMat.matrix[2][1] * -1.0f,
+		viewMat.matrix[2][2] * -1.0f,
+		viewMat.matrix[2][3] * -1.0f,
+
+		viewMat.matrix[3][0],
+		viewMat.matrix[3][1],
+		viewMat.matrix[3][2],
+		viewMat.matrix[3][3]
+	};
+	//pPrintMatrix(viewMatrix);
+
 	msg.resize(
 		STSIZE + 
-		uuidSize
+		uuidSize + 
+		sizeof(viewMatrix)
 	);
 	memcpy(msg.data(), &uuidSize, STSIZE);
 	messageSize += STSIZE;
 	memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 	messageSize += uuidSize;
+	memcpy(msg.data() + messageSize, &viewMatrix, sizeof(viewMatrix));
+	messageSize += sizeof(viewMatrix);
 	
 	comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::ACTIVECAM, ComLib::ATTRIBUTE_TYPE::NONE, messageSize);
 }
@@ -332,7 +375,34 @@ void pSendPlugData(MPlug& plug, MString ownerUuid, ComLib::ATTRIBUTE_TYPE attrib
 		MDataHandle dh{};
 		plug.getValue(dh);
 		MFloatVector fv{ dh.asFloat3() };
-		float container[3] { fv.x, fv.y, fv.z };
+		//float container[3] { fv.x, fv.y, fv.z };
+
+		debugString = "R: ";
+		debugString += fv.x;
+		debugString += " G: ";
+		debugString += fv.y;
+		debugString += " B: ";
+		debugString += fv.z;
+		//MGlobal::displayInfo(debugString);
+		
+		debugString = "RI: ";
+		debugString += (std::max(0u, std::min(255u & 0xff, static_cast<uint32_t>(std::floor(fv.x * 256.f)))));
+		debugString += " GI: ";
+		debugString += (std::max(0u, std::min(255u, static_cast<uint32_t>(std::floor(fv.y * 256.f)))));
+		debugString += " BI: ";
+		debugString += (std::max(0u, std::min(255u, static_cast<uint32_t>(std::floor(fv.z * 256.f)))));
+		//MGlobal::displayInfo(debugString);
+
+		uint32_t RGBA{
+			(0xff << 24) +
+			(((std::max(0u, std::min(255u, static_cast<uint32_t>(std::floor(fv.z * 256.f))))) & 0xff) << 16) +
+			(((std::max(0u, std::min(255u, static_cast<uint32_t>(std::floor(fv.y * 256.f))))) & 0xff) << 8) +
+			(((std::max(0u, std::min(255u, static_cast<uint32_t>(std::floor(fv.x * 256.f))))) & 0xff))
+		};
+
+		debugString = "RGBA::::: ";
+		debugString += RGBA;
+		//MGlobal::displayInfo(debugString);
 
 		std::string uuid{ ownerUuid.asChar() };
 		size_t uuidSize{ uuid.size() };
@@ -343,14 +413,14 @@ void pSendPlugData(MPlug& plug, MString ownerUuid, ComLib::ATTRIBUTE_TYPE attrib
 			msg.capacity() +
 			STSIZE +
 			uuidSize + 
-			sizeof(container)
+			sizeof(uint32_t)
 		);
 		memcpy(msg.data(), &uuidSize, STSIZE);
 		messageSize += STSIZE;
 		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
 		messageSize += uuidSize;
-		memcpy(msg.data() + messageSize, &container, sizeof(container));
-		messageSize += sizeof(container);
+		memcpy(msg.data() + messageSize, &RGBA, sizeof(uint32_t));
+		messageSize += sizeof(uint32_t);
 
 		comlib.addToPackage(
 			msg.data(), 
@@ -433,11 +503,24 @@ void pSendMatrixData(MObject& object)
 	MFnTransform transform {object};
 	std::string uuid {node.uuid().asString().asChar()};
 	size_t uuidSize {uuid.size()};
-
+	
 	MGlobal::displayInfo(node.name());
-
-	MMatrix objectMat {transform.transformationMatrix()};
-	double objectMatrix[4][4] {
+	MFnCamera cam {object};
+	MVector forwardVec{cam.viewDirection(MSpace::kWorld)};
+	debugString = "For: x:";
+	debugString += forwardVec.x;
+	debugString += " y: ";
+	debugString += forwardVec.y;
+	debugString += " z: ";
+	debugString += forwardVec.z;
+	//MGlobal::displayInfo(debugString);
+	
+	//
+	// Matrix[x][y]
+	//
+	// Matrix need to be transposed and negated!! D3DMath = row-major | HLSL = column-major!!!
+	MMatrix objectMat {transform.transformationMatrix().transpose()};
+	double objectMatrix[4][4]{
 		objectMat.matrix[0][0],
 		objectMat.matrix[0][1],
 		objectMat.matrix[0][2]/* * -1.0f*/,
@@ -455,13 +538,13 @@ void pSendMatrixData(MObject& object)
 
 		objectMat.matrix[3][0],
 		objectMat.matrix[3][1],
-		objectMat.matrix[3][2] * -1.0f,
+		objectMat.matrix[3][2]/* * -1.0f*/,
 		objectMat.matrix[3][3]
 	};
 	size_t matrixSize {sizeof(objectMatrix)};
-	pPrintMatrix(objectMatrix);
+	//pPrintMatrix(objectMatrix);
 	
-	MMatrix worldMat {};
+	MMatrix worldMat {objectMat};
 	double worldMatrix[4][4] {};
 	MFnDependencyNode parentTransformNode {transform.parent(0)};
 	if (node.name() == "world")
@@ -469,52 +552,79 @@ void pSendMatrixData(MObject& object)
 		worldMat.setToIdentity();
 
 		worldMatrix[0][0] = worldMat.matrix[0][0];
-		worldMatrix[0][1] = worldMat.matrix[1][0];
-		worldMatrix[0][2] = worldMat.matrix[2][0];
-		worldMatrix[0][3] = worldMat.matrix[3][0];
-
-		worldMatrix[1][0] = worldMat.matrix[0][1];
-		worldMatrix[1][1] = worldMat.matrix[1][1];
-		worldMatrix[1][2] = worldMat.matrix[2][1];
-		worldMatrix[1][3] = worldMat.matrix[3][1];
-
-		worldMatrix[2][0] = worldMat.matrix[0][2];
-		worldMatrix[2][1] = worldMat.matrix[1][2];
-		worldMatrix[2][2] = worldMat.matrix[2][2]/* * -1.0f*/;
-		worldMatrix[2][3] = worldMat.matrix[3][2];
-
-		worldMatrix[3][0] = worldMat.matrix[0][3];
-		worldMatrix[3][1] = worldMat.matrix[1][3];
-		worldMatrix[3][2] = worldMat.matrix[2][3];
-		worldMatrix[3][3] = worldMat.matrix[3][3];
-	}
-	else
-	{
-		MFnTransform parentTransform {parentTransformNode.object()};
-		worldMat = objectMat.operator*(parentTransform.transformationMatrix());
-
-		worldMatrix[0][0] = worldMat.matrix[0][0];
 		worldMatrix[0][1] = worldMat.matrix[0][1];
-		worldMatrix[0][2] = worldMat.matrix[0][2]/* * -1.0f*/;
+		worldMatrix[0][2] = worldMat.matrix[0][2];
 		worldMatrix[0][3] = worldMat.matrix[0][3];
 
 		worldMatrix[1][0] = worldMat.matrix[1][0];
 		worldMatrix[1][1] = worldMat.matrix[1][1];
-		worldMatrix[1][2] = worldMat.matrix[1][2]/* * -1.0f*/;
+		worldMatrix[1][2] = worldMat.matrix[1][2];
 		worldMatrix[1][3] = worldMat.matrix[1][3];
 
 		worldMatrix[2][0] = worldMat.matrix[2][0];
 		worldMatrix[2][1] = worldMat.matrix[2][1];
-		worldMatrix[2][2] = worldMat.matrix[2][2]/* * -1.0f*/;
+		worldMatrix[2][2] = worldMat.matrix[2][2] * -1.0f;
 		worldMatrix[2][3] = worldMat.matrix[2][3];
 
 		worldMatrix[3][0] = worldMat.matrix[3][0];
 		worldMatrix[3][1] = worldMat.matrix[3][1];
-		worldMatrix[3][2] = worldMat.matrix[3][2] * -1.0f;
+		worldMatrix[3][2] = worldMat.matrix[3][2];
 		worldMatrix[3][3] = worldMat.matrix[3][3];
 	}
-	pPrintMatrix(worldMatrix);
+	else
+	{
+		//##########################
+		//# Calculate world matrix #
+		//##########################
+		//MDagPath path {};
+		//transform.getPath(path);
+		//size_t pathCount {path.length()};
+		//MGlobal::displayInfo(path.fullPathName());
+		//debugString = pathCount;
+		//MGlobal::displayInfo(debugString);
 
+		//for (size_t i = 0; i < pathCount; ++i)
+		//{
+		//	path.pop();
+		//	MFnTransform parentTransform {path.node()};
+		//	worldMat = parentTransform.transformationMatrix().transpose().operator*(worldMat);
+		//}
+
+		MFnTransform parentTransform{ parentTransformNode.object() };
+		worldMat = objectMat.operator*(parentTransform.transformationMatrix().transpose());
+
+		worldMatrix[0][0] = worldMat.matrix[0][0];
+		worldMatrix[1][0] = worldMat.matrix[1][0];
+		worldMatrix[2][0] = worldMat.matrix[2][0]/* * -1.0f*/;
+		worldMatrix[3][0] = worldMat.matrix[3][0];
+
+		worldMatrix[0][1] = worldMat.matrix[0][1];
+		worldMatrix[1][1] = worldMat.matrix[1][1];
+		worldMatrix[2][1] = worldMat.matrix[2][1]/** -1.0f*/;
+		worldMatrix[3][1] = worldMat.matrix[3][1];
+
+		worldMatrix[0][2] = worldMat.matrix[0][2];
+		worldMatrix[1][2] = worldMat.matrix[1][2];
+		worldMatrix[2][2] = worldMat.matrix[2][2]/* * -1.0f*/;
+		worldMatrix[3][2] = worldMat.matrix[3][2];
+
+		worldMatrix[0][3] = worldMat.matrix[0][3];
+		worldMatrix[1][3] = worldMat.matrix[1][3];
+		worldMatrix[2][3] = worldMat.matrix[2][3]/* * -1.0f*/;
+		worldMatrix[3][3] = worldMat.matrix[3][3];
+	}
+	//pPrintMatrix(worldMatrix);
+
+	//MGlobal::displayInfo(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+	//for (size_t i = 0; i < parentTransformNode.attributeCount(); i++)
+	//{
+	//	MFnAttribute attr {parentTransformNode.attribute(i)};
+	//	debugString = i;
+	//	debugString += ": ";
+	//	debugString += attr.name().asChar();
+	//	MGlobal::displayInfo(debugString);
+	//}
+	
 	// IF INHERITS, SET PARENT TO WORLD (.DAGROOT()), ELSE SET TO PARENT();
 	MPlug plug {node.findPlug("inheritsTransform",res)};
 	std::string parentUuid{};
@@ -524,7 +634,7 @@ void pSendMatrixData(MObject& object)
 		MFnDependencyNode parentNode {transform.parent(0)};
 		parentUuid = parentNode.uuid().asString().asChar();
 		parentUuidSize = parentUuid.size();
-		MGlobal::displayInfo(parentNode.name());
+		//MGlobal::displayInfo(parentNode.name());
 	}
 	else
 	{
@@ -533,7 +643,7 @@ void pSendMatrixData(MObject& object)
 			MFnDependencyNode worldNode {transform.dagRoot()};
 			parentUuid = worldNode.uuid().asString().asChar();
 			parentUuidSize = parentUuid.size();
-			MGlobal::displayInfo(worldNode.name());
+			//MGlobal::displayInfo(worldNode.name());
 		}
 	}
 
@@ -577,151 +687,78 @@ void pSendProjectionMatrix(MObject& object)
 	MFnCamera cam {object};
 	std::string uuid {cam.uuid().asString().asChar()};
 	size_t uuidSize {uuid.size()};
+	std::vector<char> msg {};
+	size_t messageSize {};
 
 	MFnDependencyNode viewMatrix {cam.parent(0)};
 	std::string viewUuid {viewMatrix.uuid().asString().asChar()};
 	size_t viewUuidSize {viewUuid.size()};
 
-	MMatrix projectionMat {cam.projectionMatrix().matrix};
-	double projMat[4][4] {
-		cam.projectionMatrix().matrix[0][0],
-		cam.projectionMatrix().matrix[0][1],
-		cam.projectionMatrix().matrix[0][2],
-		cam.projectionMatrix().matrix[0][3],
+	double nPlane{ cam.nearClippingPlane() };
+	double fPlane{ cam.farClippingPlane() };
+	MMatrix projectionMat {cam.projectionMatrix().transpose().matrix};
+
+	// [2][2], [3][2] and [2][3] Controls NDC space!!!
+	double projMat[4][4] {};
+	if (!cam.isOrtho())
+	{
+		projMat[0][0] = projectionMat.matrix[0][0];
+		projMat[1][0] = projectionMat.matrix[1][0];
+		projMat[2][0] = projectionMat.matrix[2][0];
+		projMat[3][0] = projectionMat.matrix[3][0];
 	
-		cam.projectionMatrix().matrix[1][0],
-		cam.projectionMatrix().matrix[1][1],
-		cam.projectionMatrix().matrix[1][2],
-		cam.projectionMatrix().matrix[1][3],
+		projMat[0][1] = projectionMat.matrix[0][1];
+		projMat[1][1] = projectionMat.matrix[1][1];
+		projMat[2][1] = projectionMat.matrix[2][1];
+		projMat[3][1] = projectionMat.matrix[3][1];
 	
-		cam.projectionMatrix().matrix[2][0],
-		cam.projectionMatrix().matrix[2][1],
-		cam.projectionMatrix().matrix[2][2],
-		cam.projectionMatrix().matrix[2][3] * -1.0f,
+		projMat[0][2] = projectionMat.matrix[0][2];
+		projMat[1][2] = projectionMat.matrix[1][2];
+		projMat[2][2] = projectionMat.matrix[2][2];
+		//-fPlane/(nPlane - fPlane),
+		projMat[3][2] = projectionMat.matrix[3][2] * -1.0f;
 	
-		cam.projectionMatrix().matrix[3][0],
-		cam.projectionMatrix().matrix[3][1],
-		cam.projectionMatrix().matrix[3][2] * -1.0f,
-		cam.projectionMatrix().matrix[3][3]
-	};
-	MGlobal::displayInfo("############ Perspective: ");
-	pPrintMatrix(projMat);
-	double det {projectionMat.det4x4()};
-	debugString = "determinant: ";
-	debugString += det;
-	MGlobal::displayInfo(debugString);
+		projMat[0][3] = projectionMat.matrix[0][3];
+		projMat[1][3] = projectionMat.matrix[1][3];
+		//(nPlane*fPlane) / (nPlane - fPlane),
+		projMat[2][3] = projectionMat.matrix[2][3] * -1.0f;
+		projMat[3][3] = projectionMat.matrix[3][3];
 
-	float HFOV{ static_cast<float>(cam.horizontalFieldOfView()) };
-	float VFOV{ static_cast<float>(cam.verticalFieldOfView()) };
-	float FOV{ HFOV * VFOV };
-	float ARO{ static_cast<float>(cam.aspectRatio()) };
-	float nPlane{ static_cast<float>(cam.nearClippingPlane()) };
-	float fPlane{ static_cast<float>(cam.farClippingPlane()) };
+	}
+	else
+	{
+		projMat[0][0] = projectionMat.matrix[0][0];
+		projMat[1][0] = projectionMat.matrix[1][0];
+		projMat[2][0] = projectionMat.matrix[2][0];
+		projMat[3][0] = projectionMat.matrix[3][0];
 
-	debugString = "VFOV: ";
-	debugString += VFOV;
-	MGlobal::displayInfo(debugString);
-	debugString = "ARO: ";
-	debugString += ARO;
-	MGlobal::displayInfo(debugString);
-	debugString = "nPlane: ";
-	debugString += nPlane;
-	MGlobal::displayInfo(debugString);
-	debugString = "fPlane: ";
-	debugString += fPlane;
-	MGlobal::displayInfo(debugString);
+		projMat[0][1] = projectionMat.matrix[0][1];
+		projMat[1][1] = projectionMat.matrix[1][1];
+		projMat[2][1] = projectionMat.matrix[2][1];
+		projMat[3][1] = projectionMat.matrix[3][1];
 
+		projMat[0][2] = projectionMat.matrix[0][2];
+		projMat[1][2] = projectionMat.matrix[1][2];
+		
+		//projMat[2][2] = projectionMat.matrix[2][2];
+		projMat[2][2] = 1 / (fPlane - nPlane);
+		//projMat[2][2] = (nPlane) / (fPlane - nPlane);
 
+		projMat[3][2] = projectionMat.matrix[3][2] * 1.0f;
 
-	MVector eyePos		{cam.eyePoint(MSpace::kWorld)};
-	MVector forwardVec	{cam.viewDirection(MSpace::kWorld)};
-	MVector upVec		{cam.upDirection(MSpace::kWorld)};
-	MVector rightVec	{cam.rightDirection(MSpace::kWorld)};
+		projMat[0][3] = projectionMat.matrix[0][3];
+		projMat[1][3] = projectionMat.matrix[1][3];
+		
+		//projMat[2][3] = projectionMat.matrix[2][3] * -1.0f;
+		projMat[2][3] = (nPlane) / (fPlane - nPlane);
+		//projMat[2][3] = 1 / (fPlane - nPlane);
 
-	debugString = "Pos: x:";
-	debugString += eyePos.x;
-	debugString += " y: ";
-	debugString += eyePos.y;
-	debugString += " z: ";
-	debugString += eyePos.z;
-	MGlobal::displayInfo(debugString);
-	debugString = "For: x:";
-	debugString += forwardVec.x;
-	debugString += " y: ";
-	debugString += forwardVec.y;
-	debugString += " z: ";
-	debugString += forwardVec.z;
-	MGlobal::displayInfo(debugString);
-	debugString = "Up: x:";
-	debugString += upVec.x;
-	debugString += " y: ";
-	debugString += upVec.y;
-	debugString += " z: ";
-	debugString += upVec.z;
-	MGlobal::displayInfo(debugString);
-	debugString = "Rig: x:";
-	debugString += rightVec.x;
-	debugString += " y: ";
-	debugString += rightVec.y;
-	debugString += " z: ";
-	debugString += rightVec.z;
-	MGlobal::displayInfo(debugString);
+		projMat[3][3] = projectionMat.matrix[3][3];
+	}
 
+	//MGlobal::displayInfo("############ Perspective: ");
+	//pPrintMatrix(projMat);
 
-	//DirectX::XMMATRIX projMat {};
-	//if (cam.isOrtho())
-	//{
-	//	float tangent = tanf(VFOV / 2);
-	//	float height = (0.1f * tangent) * 2.0f;
-	//	float width = (height * ARO) * 2.0f;
-
-	//	debugString = "tan: ";
-	//	debugString += tangent;
-	//	MGlobal::displayInfo(debugString);
-	//	debugString = "halfHeight: ";
-	//	debugString += height;
-	//	MGlobal::displayInfo(debugString);
-	//	debugString = "halfWidth: ";
-	//	debugString += width;
-	//	MGlobal::displayInfo(debugString);
-
-	//	projMat = DirectX::XMMatrixOrthographicLH(width, height, nPlane, fPlane);
-	//	//projMatrix = DirectX::XMMatrixOrthographicOffCenterLH(0, width, height, 0, nPlane, fPlane);
-
-	//	MGlobal::displayInfo("############ Ortho: ");
-	//	DirectX::XMVECTOR vec = DirectX::XMMatrixDeterminant(projMat);
-	//	debugString = "determinant: x:";
-	//	debugString += vec.m128_f32[0];
-	//	debugString += " y: ";
-	//	debugString += vec.m128_f32[1];
-	//	debugString += " z: ";
-	//	debugString += vec.m128_f32[2];
-	//	debugString += " w: ";
-	//	debugString += vec.m128_f32[3];
-	//	MGlobal::displayInfo(debugString);
-	//	pPrintMatrix(projMat);
-	//	MGlobal::displayInfo("#############");
-	//}
-	//else
-	//{
-	//	MGlobal::displayInfo("############ Perspective: ");
-	//	projMat = DirectX::XMMatrixPerspectiveFovLH(VFOV, ARO, nPlane, fPlane);
-	//	DirectX::XMVECTOR vec = DirectX::XMMatrixDeterminant(projMat);
-	//	debugString = "determinant: x:";
-	//	debugString += vec.m128_f32[0];
-	//	debugString += " y: ";
-	//	debugString += vec.m128_f32[1];
-	//	debugString += " z: ";
-	//	debugString += vec.m128_f32[2];
-	//	debugString += " w: ";
-	//	debugString += vec.m128_f32[3];
-	//	MGlobal::displayInfo(debugString);
-	//	pPrintMatrix(projMat);
-	//	MGlobal::displayInfo("#############");
-	//}
-
-	std::vector<char> msg {};
-	size_t messageSize {};
 	msg.resize(
 		(STSIZE * 2) +
 		uuidSize +
@@ -1264,7 +1301,7 @@ void pSendProjectionMatrix(MObject& object)
 //	MGlobal::displayInfo("IDs done!");
 //}
 
-void pSendVertexData(MObject& object)
+void pSendVertexData(MObject& object, bool allocate)  
 {
 	MStatus res {};
 	MString debugString {};
@@ -1285,7 +1322,7 @@ void pSendVertexData(MObject& object)
 	MFnMesh mesh{ object };
 	std::string uuid{mesh.uuid().asString().asChar()};
 	size_t uuidSize{uuid.size()};
-
+	
 	std::vector<char> msg	{};
 	size_t messageSize		{};
 	std::vector<char> msg2	{};
@@ -1295,6 +1332,20 @@ void pSendVertexData(MObject& object)
 	MPointArray vertexLookUpTable{};
 	mesh.getPoints(vertexLookUpTable);
 	
+	MGlobal::displayInfo("#########################");
+	MGlobal::displayInfo("Mesh Points: ");
+	for (size_t i = 0; i < vertexLookUpTable.length(); ++i)
+	{
+		debugString = "Vertex: ";
+		debugString += vertexLookUpTable[i].x;
+		debugString += " , ";
+		debugString += vertexLookUpTable[i].y;
+		debugString += " , ";
+		debugString += vertexLookUpTable[i].z;
+		MGlobal::displayInfo(debugString);
+	}
+	MGlobal::displayInfo("#########################");
+
 	MStringArray uvSetNames{};
 	mesh.getUVSetNames(uvSetNames);
 
@@ -1370,48 +1421,92 @@ void pSendVertexData(MObject& object)
 		//####################################################
 		//####################################################
 
-		msg.resize(
-			STSIZE +
-			uuidSize +
-			sizeof(UINT)
-		);
-		memcpy(msg.data(), &uuidSize, STSIZE);
-		messageSize += STSIZE;
-		memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
-		messageSize += uuidSize;
-		
-		UINT faceCount {faceIt.count()};
-		memcpy(msg.data() + messageSize, &faceCount, sizeof(UINT));
-		messageSize += sizeof(UINT);
-		
-		comlib.addToPackage(
-			msg.data(),
-			ComLib::MSG_TYPE::ALLOCATE,
-			ComLib::ATTRIBUTE_TYPE::FACES,
-			messageSize
-		);
-		msg.clear();
-		messageSize = 0;
+		//if (allocate)
+		//{
+			msg.resize(
+				STSIZE +
+				uuidSize +
+				sizeof(UINT)
+			);
+			memcpy(msg.data(), &uuidSize, STSIZE);
+			messageSize += STSIZE;
+			memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+			messageSize += uuidSize;
+			
+			UINT faceCount {faceIt.count()};
+			memcpy(msg.data() + messageSize, &faceCount, sizeof(UINT));
+			messageSize += sizeof(UINT);
+			
+			comlib.addToPackage(
+				msg.data(),
+				ComLib::MSG_TYPE::ALLOCATE,
+				ComLib::ATTRIBUTE_TYPE::FACES,
+				messageSize
+			);
+			msg.clear();
+			messageSize = 0;
+		//}
 
 		for (; !faceIt.isDone(); faceIt.next())
 		{
 			UINT faceIndex {faceIt.index()};
+			bool triangulated {};
 			//MGlobal::displayInfo(debugString);
 
 			// Lists points and IDs from Object-Relative face triangles.
 			// Multiple copies of same points. (Refer to mesh.getPoints() list above instead to clean up duplicates.
 			// IDs are Object-Relative, shared normals and uvs -> on a cube, 1 UV/Normal vector per vertex instead of 3(per-face).
 			// See for loop below for fetching Face-Relative vertex IDs.
-			MPointArray faceVertexTriangleList			{}; // Just fluff
+			MPointArray faceVertexTriangleList			{}; // Not needed
 			MIntArray  objectRelativeTriangleIDs		{};
 			faceIt.getTriangles(faceVertexTriangleList, objectRelativeTriangleIDs, MSpace::kObject);
+			
+			MGlobal::displayInfo("#########################");
+			debugString = "Tris ID";
+			debugString += ": ";
+			MGlobal::displayInfo(debugString);
+			for (size_t i = 0; i < objectRelativeTriangleIDs.length(); ++i)
+			{
+				debugString = "ID: ";
+				debugString += objectRelativeTriangleIDs[i];
+				MGlobal::displayInfo(debugString);
+			}
+			MGlobal::displayInfo("#########################");
+
+			debugString = faceVertexTriangleList.length();
+			//MGlobal::displayInfo(debugString);
+			debugString = (objectRelativeTriangleIDs.length());
+			//MGlobal::displayInfo(debugString);
+			
+			if (faceVertexTriangleList.length() == 3)
+			{
+				//MGlobal::displayInfo("Triangulated!");
+				triangulated = true;
+			}
 			// Length is still Face-Relative and will give correct per-face ID drawCount.
 			UINT faceIDCount {objectRelativeTriangleIDs.length()};
 
-			MPointArray facePointList					{};
+			MPointArray facePointList {};
 			faceIt.getPoints(facePointList);
 			UINT faceVertexCount {facePointList.length()};
 			
+			MGlobal::displayInfo("#########################");
+			debugString = "Face Point ";
+			debugString += faceIndex;
+			debugString += ":";
+			MGlobal::displayInfo(debugString);
+			for (size_t i = 0; i < facePointList.length(); ++i)
+			{
+				debugString = "Vertex: ";
+				debugString += facePointList[i].x;
+				debugString += " , ";
+				debugString += facePointList[i].y;
+				debugString += " , ";
+				debugString += facePointList[i].z;
+				MGlobal::displayInfo(debugString);
+			}
+			MGlobal::displayInfo("#########################");
+
 			MVectorArray norms {};
 			faceIt.getNormals(norms, MSpace::kObject);
 			//debugString = "Face Normal length";
@@ -1433,31 +1528,34 @@ void pSendVertexData(MObject& object)
 			//#					VERTEX ALLOCATION				 #
 			//####################################################
 			//####################################################
-			msg.resize(
-				STSIZE +
-				uuidSize +
-				(sizeof(UINT) * 3)
-			);
-			memcpy(msg.data(), &uuidSize, STSIZE);
-			messageSize += STSIZE;
-			memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
-			messageSize += uuidSize;
-			
-			memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
-			messageSize += sizeof(UINT);
-			memcpy(msg.data() + messageSize, &faceVertexCount, sizeof(UINT));
-			messageSize += sizeof(UINT);
-			memcpy(msg.data() + messageSize, &faceIDCount, sizeof(UINT));
-			messageSize += sizeof(UINT);
-			
-			comlib.addToPackage(
-				msg.data(),
-				ComLib::MSG_TYPE::ALLOCATE,
-				ComLib::ATTRIBUTE_TYPE::VERTEX,
-				messageSize
-			);
-			msg.clear();
-			messageSize = 0;
+			//if (allocate)
+			//{
+				msg.resize(
+					STSIZE +
+					uuidSize +
+					(sizeof(UINT) * 3)
+				);
+				memcpy(msg.data(), &uuidSize, STSIZE);
+				messageSize += STSIZE;
+				memcpy(msg.data() + messageSize, &uuid[0], uuidSize);
+				messageSize += uuidSize;
+				
+				memcpy(msg.data() + messageSize, &faceIndex, sizeof(UINT));
+				messageSize += sizeof(UINT);
+				memcpy(msg.data() + messageSize, &faceVertexCount, sizeof(UINT));
+				messageSize += sizeof(UINT);
+				memcpy(msg.data() + messageSize, &faceIDCount, sizeof(UINT));
+				messageSize += sizeof(UINT);
+				
+				comlib.addToPackage(
+					msg.data(),
+					ComLib::MSG_TYPE::ALLOCATE,
+					ComLib::ATTRIBUTE_TYPE::VERTEX,
+					messageSize
+				);
+				msg.clear();
+				messageSize = 0;
+			//}
 			
 			//###################################################
 			//###################################################
@@ -1487,51 +1585,130 @@ void pSendVertexData(MObject& object)
 				sizeof(UINT32) * 200
 			);
 			//MGlobal::displayInfo("-----------");
-			for (size_t i = 0; i < faceIDCount; ++i)
+
+			// Walk through the face vertex ID list (triangle sorted)(0-n).
+			//counter == pointCounter | counter2 == IDCounter
+			for (UINT i = 0; i < faceIDCount; ++i)
 			{
+				//debugString = "FACE ID: ";
+				//debugString += (UINT)i;
+				//MGlobal::displayInfo(debugString);
+				
+				//Walk through the local object-space face points.
 				for (UINT j = 0; j < faceVertexCount; ++j)
 				{
+					// Compare with global world-space vertex list.
 					if (vertexLookUpTable[objectRelativeTriangleIDs[i]].x == facePointList[j].x &&
 						vertexLookUpTable[objectRelativeTriangleIDs[i]].y == facePointList[j].y &&
-						vertexLookUpTable[objectRelativeTriangleIDs[i]].z == facePointList[j].z
-						)
+						vertexLookUpTable[objectRelativeTriangleIDs[i]].z == facePointList[j].z	  )
 					{
 						counter2++;
-						vertexIDs[counter2] = j;
-						
-						if ((i != 3) && (i != 4))
+						int pointIndex {static_cast<int>(j)};
+						//debugString = "counter2: ";
+						//debugString += counter2;
+						//MGlobal::displayInfo(debugString);
+
+						// Used to correct winding order for Dx11
+						if (triangulated)
 						{
-							counter++;
-							// Used to correct winding order for Dx11
-							UINT virtPos{};
-							if (j == 2)
+							//MGlobal::displayInfo("TRUE!");
+							//Triangle List
+							if ((counter2 % 6) == 1)
 							{
-								virtPos = j+1;
+								vertexIDs[counter2] = j + 1;
+								//pointIndex = 2;
 							}
-							else if (j == 3)
+							else if ((counter2 % 6) == 2)
 							{
-								virtPos = j-1;
+								vertexIDs[counter2] = j - 1;
+								//pointIndex = 2;
+							}
+							else {
+								vertexIDs[counter2] = j;
+							}
+						}
+						else
+						{
+							//MGlobal::displayInfo("FALSE!");
+							//Triangle Strip
+							//vertexIDs[counter2] = j;
+							//if ((counter2 % 6) == 2 || (counter2 % 6) == 3)
+							//{
+							//	vertexIDs[counter2] = j-1;
+							//	//pointIndex = j-1;
+							//}
+							//else if ((counter2 % 6) == 5)
+							//{
+							//	vertexIDs[counter2] = j+1;
+							//	//pointIndex = j+1;
+							//}
+							//else
+							//{
+							//	vertexIDs[counter2] = j;
+							//	//pointIndex = j;
+							//}
+							//if ((counter2 % 6) == 1 || (counter2 % 6) == 4|| (counter2 % 6) == 5)
+							//{
+							//	vertexIDs[counter2] = j + 1;
+							//}
+							//else if ((counter2 % 6) == 2)
+							//{
+							//	vertexIDs[counter2] = j - 2;
+							//}
+							//else if ((counter2 % 6) == 3)
+							//{
+							//	vertexIDs[counter2] = j - 2;
+							//}
+							//else
+							//{
+							//	vertexIDs[counter2] = j;
+							//}
+							if ((counter2 % 6) == 1 || (counter2 % 6) == 4)
+							{
+								vertexIDs[counter2] = 1;
+								//pointIndex = 3;
+							}
+							else if ((counter2 % 6) == 2 || ((counter2 % 6) == 3))
+							{
+								vertexIDs[counter2] = 2;
+								//pointIndex = 1;
+							}
+							else if ((counter2 % 6) == 5)
+							{
+								vertexIDs[counter2] = 3;
+								//pointIndex = 2;
 							}
 							else
 							{
-								virtPos = j;
+								vertexIDs[counter2] = 0;
+								//pointIndex = 0;
 							}
+						}
 
+						//debugString = "VERTEX ID: ";
+						////debugString += (UINT)j;
+						//debugString += vertexIDs[counter2];
+						//MGlobal::displayInfo(debugString);
+						
+						//Ensure we are not saving duplicate vertex points (Think of more efficient way)
+						if ((i % 6) != 3 && (i % 6) != 4)
+						{
+							counter++;
+							
+							vertexList[counter].point[0] = static_cast<float>(facePointList[pointIndex].x);
+							vertexList[counter].point[1] = static_cast<float>(facePointList[pointIndex].y);
+							vertexList[counter].point[2] = static_cast<float>(facePointList[pointIndex].z);
 
-							vertexList[counter].point[0] = static_cast<float>(facePointList[virtPos].x);
-							vertexList[counter].point[1] = static_cast<float>(facePointList[virtPos].y);
-							vertexList[counter].point[2] = static_cast<float>(facePointList[virtPos].z);
-
-							/*debugString = "X: ";
-							debugString += vertexList[counter].point[0];
-							debugString += " Y: ";
-							debugString += vertexList[counter].point[1];
-							debugString += " Z: ";
-							debugString += vertexList[counter].point[2];
-							MGlobal::displayInfo(debugString);*/
+							//debugString = "X: ";
+							//debugString += vertexList[counter].point[0];
+							//debugString += " Y: ";
+							//debugString += vertexList[counter].point[1];
+							//debugString += " Z: ";
+							//debugString += vertexList[counter].point[2];
+							//MGlobal::displayInfo(debugString);
 
 							MVector faceVertNormal{};
-							faceIt.getNormal(virtPos, faceVertNormal, MSpace::kObject);
+							faceIt.getNormal(vertexIDs[counter2], faceVertNormal, MSpace::kObject);
 							vertexList[counter].normal[0] = static_cast<float>(faceVertNormal.x);
 							vertexList[counter].normal[1] = static_cast<float>(faceVertNormal.y);
 							vertexList[counter].normal[2] = static_cast<float>(faceVertNormal.z);
@@ -1545,7 +1722,7 @@ void pSendVertexData(MObject& object)
 							MGlobal::displayInfo(debugString);*/
 
 							MVector tangentVector {};
-							UINT tangentIndex {faceIt.tangentIndex(virtPos)};
+							UINT tangentIndex {faceIt.tangentIndex(vertexIDs[counter2])};
 							vertexList[counter].tangent[0] = static_cast<float>(tangentLookup[tangentIndex].x);
 							vertexList[counter].tangent[1] = static_cast<float>(tangentLookup[tangentIndex].y);
 							vertexList[counter].tangent[2] = static_cast<float>(tangentLookup[tangentIndex].z);
@@ -1571,10 +1748,10 @@ void pSendVertexData(MObject& object)
 							MGlobal::displayInfo(debugString);*/
 
 							int uvIndex{};
-							faceIt.getUVIndex(static_cast<int>(virtPos), uvIndex, &uvSetNames[0]);
+							faceIt.getUVIndex(static_cast<int>(pointIndex), uvIndex, &uvSetNames[0]);
 							vertexList[counter].uv[0] = static_cast<float>(U[uvIndex]);
 							vertexList[counter].uv[1] = static_cast<float>(V[uvIndex]);
-					
+				
 							/*debugString = "U: ";
 							debugString += vertexList[counter].uv[0];
 							debugString += " V: ";
@@ -1582,7 +1759,7 @@ void pSendVertexData(MObject& object)
 							MGlobal::displayInfo(debugString);*/
 
 							//MGlobal::displayInfo("-----------");
-						
+					
 							if (counter % 99 == 0 && counter != 0)
 							{
 								memcpy(msg.data(), &uuidSize, STSIZE);
@@ -1767,7 +1944,7 @@ void pAllocNode(MObject& object)
 
 	if (nodeName.length() == 0)
 	{
-		MGlobal::displayInfo("DAG");
+		//MGlobal::displayInfo("DAG");
 		MFnDagNode dag{ object };
 		MString dagUuid	{ dag.uuid()};
 		MString dagName	{ dag.name() };
@@ -1946,7 +2123,7 @@ void pSendMeshData(MObject& object)
 
 	// Will not be sent individually due to attribute callbacks.
 	// Look for possible solution for separation in the future.
-	pSendVertexData(object);
+	pSendVertexData(object, 1);
 	//pSendVertexData2(object);
 
 
@@ -1955,7 +2132,6 @@ void pSendMeshData(MObject& object)
 void pSendCameraData(MObject& object)
 {
 	pSendProjectionMatrix(object);
-	//pSendCamData(object);
 }
 void pSendAmbientLightData(MObject& object)
 {
@@ -2133,10 +2309,11 @@ void pSendMaterialData(MObject& object)
 	MString materialUuid{ materialNode.uuid() };
 	std::string matUuid{ materialUuid.asChar() };
 	size_t matUuidSize{ matUuid.size() };
-
 	// Materials can be accessed when no info is created. If for safety
 	if (materialNode.name().length() != 0)
 	{
+		MMaterial mats {materialNode.object()};
+		MColor color;
 		MPlug colorPlug{ materialNode.findPlug("color", res) };
 		if (colorPlug.asMObject().apiType() != MFn::kInvalid)
 		{
@@ -2200,7 +2377,7 @@ void pSendMaterialData(MObject& object)
 			{
 				debugString = materialUuid;
 				debugString += "'s color is not connected!";
-				MGlobal::displayInfo(debugString);
+				//MGlobal::displayInfo(debugString);
 			}
 		}
 
@@ -2269,7 +2446,7 @@ void pSendMaterialData(MObject& object)
 			{
 				debugString = materialUuid;
 				debugString += "'s ambientColor is not connected!";
-				MGlobal::displayInfo(debugString);
+				//MGlobal::displayInfo(debugString);
 			}
 		}
 
@@ -2337,7 +2514,7 @@ void pSendMaterialData(MObject& object)
 			{
 				debugString = materialUuid;
 				debugString += "'s transparency is not connected!";
-				MGlobal::displayInfo(debugString);
+				//MGlobal::displayInfo(debugString);
 			}
 		}
 
@@ -2427,7 +2604,7 @@ void pSendMaterialData(MObject& object)
 			{
 				debugString = materialUuid;
 				debugString += "'s normalCamera is not connected!";
-				MGlobal::displayInfo(debugString);
+				//MGlobal::displayInfo(debugString);
 			}
 		}
 	}
@@ -2519,7 +2696,7 @@ void pSendShaderGroupData(MObject& object)
 	{
 		debugString = "No Material connected to SE: ";
 		debugString += uuid.c_str();
-		MGlobal::displayInfo(debugString);
+		//MGlobal::displayInfo(debugString);
 	}
 
 }
@@ -2665,7 +2842,7 @@ void pAttributeChangedCallback(MNodeMessage::AttributeMessage msg, MPlug& plug, 
 				attributeName == "vertexNormal"*/
 				attributeName == "outMesh")
 			{
-				pSendVertexData(nodeObject);
+				pSendMeshData(nodeObject);
 			}
 			break;
 		case MFn::kPointLight:
@@ -2847,15 +3024,32 @@ void pAddNodeCallbacks(MObject& object)
 	{
 		if (myCallbackArray.append(AttributeChangedID) == MS::kSuccess) {};
 	}
-	MCallbackId AttributeAddedRemovedID = MNodeMessage::addAttributeAddedOrRemovedCallback(
-	object,
-	pAttributeAddedRemovedCallback,
-	NULL,
-	&res);
-	if (res == MS::kSuccess)
+	//MCallbackId AttributeAddedRemovedID = MNodeMessage::addAttributeAddedOrRemovedCallback(
+	//object,
+	//pAttributeAddedRemovedCallback,
+	//NULL,
+	//&res);
+	//if (res == MS::kSuccess)
+	//{
+	//	if (myCallbackArray.append(AttributeAddedRemovedID) == MS::kSuccess) {};
+	//}
+}
+void pRemoveNodeCallbacks(MObject& object)
+{
+	MCallbackIdArray nodeCallbackIds {};
+	MMessage::nodeCallbacks(object, nodeCallbackIds);
+
+	for (size_t i = 0; i < myCallbackArray.length(); ++i)
 	{
-		if (myCallbackArray.append(AttributeAddedRemovedID) == MS::kSuccess) {};
+		for (size_t j = 0; j < nodeCallbackIds.length(); ++j)
+		{
+			if (myCallbackArray[i] == nodeCallbackIds[j])
+			{
+				myCallbackArray.remove(i);
+			}
+		}
 	}
+	MMessage::removeCallbacks(nodeCallbackIds);
 }
 
 void pNodeCreationCallback(MObject& object, void* clientData)
@@ -2946,7 +3140,9 @@ void pNodeDeleteCallback(MObject& object, void* clientData)
 	
 	std::vector<char> msg {};
 	size_t messageSize {};
-	
+
+	pRemoveNodeCallbacks(object);
+
 	msg.resize(
 		STSIZE +
 		uuidSize
@@ -3112,7 +3308,7 @@ void pGetExistingMaterials()
 	for (; !fileIt.isDone(); fileIt.next())
 	{
 		MObject textureObject(fileIt.thisNode());
-		//pAddNodeCallbacks(textureObject);
+		pAddNodeCallbacks(textureObject);
 		pAllocNode(textureObject);
 		pSendTextureData(textureObject);
 	}
@@ -3122,10 +3318,10 @@ void pGetExistingMaterials()
 	for (; !bumpIt.isDone(); bumpIt.next())
 	{
 		MObject bumpObject(bumpIt.thisNode());
-		//pAddNodeCallbacks(bumpObject);
+		pAddNodeCallbacks(bumpObject);
 		pAllocNode(bumpObject);
-		//
-		//// Append shaders to outNormal in shaders, after pull iteration.
+		
+		// Append shaders to outNormal in shaders, after pull iteration.
 		// Bump output Plugs are nullptr : MS::kInvalid since pull from shader hasn't been initiated.
 		pSendBumpData(bumpObject);
 	}
@@ -3137,9 +3333,9 @@ void pGetExistingMaterials()
 		for (; !shaderIt.isDone(); shaderIt.next())
 		{
 			MObject shaderObject(shaderIt.thisNode());
-			//pAddNodeCallbacks(shaderObject);
+			pAddNodeCallbacks(shaderObject);
 			pAllocNode(shaderObject);
-			//
+			
 			pSendMaterialData(shaderObject);
 		}
 	}
@@ -3152,10 +3348,11 @@ void pGetExistingMaterials()
 	{
 		MObject groupObject(engineIt.thisNode());
 		MFnDependencyNode engine(groupObject);
+
 		// Make sure not to include SE for particles or other unecessary types (unless wanted). Filter here.
 		if (engine.name() != "initialParticleSE")
 		{
-			//pAddNodeCallbacks(groupObject);
+			pAddNodeCallbacks(groupObject);
 			pAllocNode(groupObject);
 			
 			pSendShaderGroupData(groupObject);
@@ -3164,15 +3361,14 @@ void pGetExistingMaterials()
 }
 void pGetExistingScene()
 {
-	MString debugString;
-	MStatus res;
+	MString debugString {};
+	MStatus res {};
 
 	//Queries the current viewport.
-	M3dView sceneView;
-	sceneView = sceneView.active3dView();
+	M3dView sceneView {sceneView.active3dView()};
 
 	//Queries the active cameras DagPath.
-	MDagPath camShapeDagPath;
+	MDagPath camShapeDagPath {};
 	sceneView.getCamera(camShapeDagPath);
 	
 	//Get root node
@@ -3211,7 +3407,7 @@ void pGetExistingScene()
 				&& rootChildName != "MayaMtlView_RimLight1"
 				&& rootChildName != "MayaMtlView_KeyLight1")
 			{
-				//pAddNodeCallbacks(rootChildObject);
+				pAddNodeCallbacks(rootChildObject);
 				pAllocNode(rootChildObject);
 				pSendTransformData(rootChildObject);
 				//MGlobal::displayInfo("reached children!");
@@ -3223,7 +3419,7 @@ void pGetExistingScene()
 		}
 	}
 	
-	pSendActiveCamera(camDAG);
+	pSendActiveCamera();
 }
 
 void preRenderCallback(const MString& str, void* clientData)
@@ -3236,31 +3432,19 @@ void preRenderCallback(const MString& str, void* clientData)
 	size_t messageSize {};
 	bool sending {};
 
-	M3dView sceneView {sceneView.active3dView()};
+	//M3dView sceneView{ sceneView.active3dView() };
+	//sceneView.updateViewingParameters();
+
+	//MMatrix viewMatrix {};
+	//sceneView.modelViewMatrix(viewMatrix);
+	//double det {viewMatrix.det4x4()};
+	//MGlobal::displayInfo("############ modelViewMatrix: ");
+	//debugString = "determinant: ";
+	//debugString += det;
+	//MGlobal::displayInfo(debugString);
+	//pPrintMatrix(viewMatrix);
 	
-	MMatrix viewMatrix {};
-	sceneView.modelViewMatrix(viewMatrix);
-	double det {viewMatrix.det4x4()};
-	MGlobal::displayInfo("############ modelViewMatrix: ");
-	debugString = "determinant: ";
-	debugString += det;
-	MGlobal::displayInfo(debugString);
-	pPrintMatrix(viewMatrix);
-	
-	
-	MGlobal::displayInfo("#############");
-
-
-
-	MDagPath camShapeDagPath {};
-	sceneView.getCamera(camShapeDagPath);
-	MFnDagNode camDAG {camShapeDagPath.node()};
-
-	MMatrix camPos {};
-	camShapeDagPath.inclusiveMatrix();
-	MGlobal::displayInfo("############ camPos: ");
-	pPrintMatrix(camPos);
-	MGlobal::displayInfo("#############");
+	//MGlobal::displayInfo("#############");
 
 	if (comlib.connectionStatus->peekExistingMessage())
 	{
@@ -3280,14 +3464,14 @@ void preRenderCallback(const MString& str, void* clientData)
 				comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFEND, messageSize);
 				while (sending == false)
 				{
-					MGlobal::displayInfo("Sending!");
+					//MGlobal::displayInfo("Sending!");
 					sending = comlib.send();
 				}
 				comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTRST, messageSize);
 				break;
 			case Connection_Status::CONNECTION_TYPE::DISCONNECTED:
 				comlib.mutex.Lock();
-				MGlobal::displayInfo("Reached a disconnection!");
+				//MGlobal::displayInfo("Reached a disconnection!");
 				comlib.reset();
 				comlib.mutex.Unlock();
 				break;
@@ -3299,12 +3483,12 @@ void preRenderCallback(const MString& str, void* clientData)
 	else
 	{
 		//MGlobal::displayInfo("6.2");
-		pSendActiveCamera(camDAG);
+		pSendActiveCamera();
 		comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTREND, messageSize);
 		//MGlobal::displayInfo("6.3");
 		while (sending == false)
 		{
-			MGlobal::displayInfo("sending!");
+			//MGlobal::displayInfo("sending!");
 			sending = comlib.send();
 		}
 		//MGlobal::displayInfo("6.4");
@@ -3312,9 +3496,10 @@ void preRenderCallback(const MString& str, void* clientData)
 		//MGlobal::displayInfo("6.5");
 	}
 }
-//
+
 //void postRenderCallback(const MString& str, void* clientData)
 //{
+//	MGlobal::displayInfo("test");
 //	//Check connection status
 //	//In-case dissconnect or reconnect -Clear buffer
 //	//Fetch existant objects
@@ -3375,8 +3560,8 @@ void preRenderCallback(const MString& str, void* clientData)
 
 EXPORT MStatus initializePlugin(MObject obj)
 {
-	MStatus res {MS::kFailure};
-	MString debugString {};
+	MStatus res{ MS::kFailure };
+	MString debugString{};
 
 	MFnPlugin myPlugin{ obj, "Maya plugin", "1.0", "Any", &res };
 	if (MFAIL(res))
@@ -3388,89 +3573,120 @@ EXPORT MStatus initializePlugin(MObject obj)
 	{
 		MGlobal::displayInfo("Maya plugin loaded!");
 	}
-
-	Connection_Status::CONNECTION_TYPE connectionType{};
-	if (SUCCEEDED(comlib.connectionStatus->checkConnection(connectionType)))
-	{
-		std::vector<char> msg {};
-		size_t messageSize {};
-
-		//MGlobal::displayInfo("Switch:");
-		switch (connectionType)
+	
+		Connection_Status::CONNECTION_TYPE connectionType{};
+		if (SUCCEEDED(comlib.connectionStatus->checkConnection(connectionType)))
 		{
-		case Connection_Status::CONNECTION_TYPE::CONNECTED:
-			comlib.reset();
-			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFSTART, messageSize);
-			//#### Query all the existing data in the scene
-			pGetExistingScene();
-			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFEND, messageSize);
-			comlib.send();
-			MGlobal::displayInfo("Sending!");
-			comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTRST, messageSize);
-			MGlobal::displayInfo("Prepaired for attributes!");
-			break;
+			std::vector<char> msg {};
+			size_t messageSize {};
+	
+			//MGlobal::displayInfo("Switch:");
+			switch (connectionType)
+			{
+			case Connection_Status::CONNECTION_TYPE::CONNECTED:
+				comlib.reset();
+				comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFSTART, messageSize);
+				//#### Query all the existing data in the scene
+				pGetExistingScene();
+				comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::OFFEND, messageSize);
+				comlib.send();
+				//MGlobal::displayInfo("Sending!");
+				comlib.addToPackage(msg.data(), ComLib::MSG_TYPE::MESSAGE, ComLib::ATTRIBUTE_TYPE::ATTRST, messageSize);
+				//MGlobal::displayInfo("Prepaired for attributes!");
+				break;
+			}
 		}
-	}
-	MCallbackId nodeAddedId{ MDGMessage::addNodeAddedCallback(
-		pNodeCreationCallback,
-		kDefaultNodeType,
-		nullptr,
-		&res) };
-	if (res == MS::kSuccess)
-	{
-		if (myCallbackArray.append(nodeAddedId) == MS::kSuccess) {};
-	}
-
-	MCallbackId nodeRemovedId{ MDGMessage::addNodeRemovedCallback(
-		pNodeDeleteCallback,
-		kDefaultNodeType,
-		nullptr,
-		&res) };
-	if (res == MS::kSuccess)
-	{
-		if (myCallbackArray.append(nodeRemovedId) == MS::kSuccess) {};
-	}
+		MCallbackId nodeAddedId{ MDGMessage::addNodeAddedCallback(
+			pNodeCreationCallback,
+			kDefaultNodeType,
+			nullptr,
+			&res) };
+		if (res == MS::kSuccess)
+		{
+			if (myCallbackArray.append(nodeAddedId) == MS::kSuccess) {};
+		}
+		
+		MCallbackId nodeRemovedId{ MDGMessage::addNodeRemovedCallback(
+			pNodeDeleteCallback,
+			kDefaultNodeType,
+			nullptr,
+			&res) };
+		if (res == MS::kSuccess)
+		{
+			if (myCallbackArray.append(nodeRemovedId) == MS::kSuccess) {};
+		}
+		
+		MCallbackId parentAddedID{ MDagMessage::addParentAddedCallback(
+			pParentAddedCallback,
+			nullptr,
+			&res) };
+		if (res == MS::kSuccess)
+		{
+			if (myCallbackArray.append(parentAddedID) == MS::kSuccess) {};
+		}
+		
+		MCallbackId parentRemovedID{ MDagMessage::addParentRemovedCallback(
+			pParentRemovedCallback,
+			nullptr,
+			&res) };
+		if (res == MS::kSuccess)
+		{
+			if (myCallbackArray.append(parentAddedID) == MS::kSuccess) {};
+		}
 	
-	MCallbackId parentAddedID{ MDagMessage::addParentAddedCallback(
-		pParentAddedCallback,
+		//MCallbackId undoId = MEventMessage::addEventCallback(
+		//	"Undo",
+		//	undoCallback,
+		//	NULL,
+		//	&res);
+		//if (res == MS::kSuccess)
+		//{
+		//	if (myCallbackArray.append(undoId) == MS::kSuccess) {};
+		//}
+		
+		MCallbackId preRenderId1{ MUiMessage::add3dViewPreRenderMsgCallback(
+			"modelPanel1",
+			preRenderCallback,
+			nullptr,
+			&res
+		)};
+		if (res == MS::kSuccess)
+		{
+			if (myCallbackArray.append(preRenderId1) == MS::kSuccess) {};
+		}
+		MCallbackId preRenderId2{ MUiMessage::add3dViewPreRenderMsgCallback(
+		"modelPanel2",
+		preRenderCallback,
 		nullptr,
-		&res) };
-	if (res == MS::kSuccess)
-	{
-		if (myCallbackArray.append(parentAddedID) == MS::kSuccess) {};
-	}
-	
-	MCallbackId parentRemovedID{ MDagMessage::addParentRemovedCallback(
-		pParentRemovedCallback,
+		&res
+	) };
+		if (res == MS::kSuccess)
+		{
+			if (myCallbackArray.append(preRenderId2) == MS::kSuccess) {};
+		}
+		MCallbackId preRenderId3{ MUiMessage::add3dViewPreRenderMsgCallback(
+		"modelPanel3",
+		preRenderCallback,
 		nullptr,
-		&res) };
-	if (res == MS::kSuccess)
-	{
-		if (myCallbackArray.append(parentAddedID) == MS::kSuccess) {};
-	}
-
-	//MCallbackId undoId = MEventMessage::addEventCallback(
-	//	"Undo",
-	//	undoCallback,
-	//	NULL,
-	//	&res);
-	//if (res == MS::kSuccess)
-	//{
-	//	if (myCallbackArray.append(undoId) == MS::kSuccess) {};
-	//}
-
-	MCallbackId preRenderId{ MUiMessage::add3dViewPreRenderMsgCallback(
+		&res
+	) };
+		if (res == MS::kSuccess)
+		{
+			if (myCallbackArray.append(preRenderId3) == MS::kSuccess) {};
+		}
+		MCallbackId preRenderId4{ MUiMessage::add3dViewPreRenderMsgCallback(
 		"modelPanel4",
 		preRenderCallback,
 		nullptr,
 		&res
-	)};
-	if (res == MS::kSuccess)
-	{
-		if (myCallbackArray.append(preRenderId) == MS::kSuccess) {};
-	}
+	) };
+		if (res == MS::kSuccess)
+		{
+			if (myCallbackArray.append(preRenderId4) == MS::kSuccess) {};
+		}
 
-	//MCallbackId postRenderId{ MUiMessage::add3dViewPostRenderMsgCallback(
+	
+	//MCallbackId postRenderId{ MUiMessage::add3dViewPreRenderMsgCallback(
 	//"modelPanel4",
 	//postRenderCallback,
 	//nullptr,
@@ -3487,6 +3703,8 @@ EXPORT MStatus uninitializePlugin(MObject obj)
 {
 	MFnPlugin plugin(obj);
 
+	//Removes callbacks from Maya! If plugin is unloaded, objects are still bound in maya?
+	//Causing the application to crash. Take a deeper look how to properly remove callbacks.
 	MMessage::removeCallbacks(myCallbackArray);
 	MGlobal::displayInfo("Maya plugin unloaded!");
 
