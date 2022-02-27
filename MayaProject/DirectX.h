@@ -155,7 +155,7 @@ private:
 	HRESULT CreateGeometryShader(LPCWSTR fileName, LPCSTR entryPoint, ID3D11GeometryShader*& geometricShader);
 	HRESULT CreatePixelShader(LPCWSTR fileName, LPCSTR entryPoint, ID3D11PixelShader*& pixelShader);
 
-	void createConstantBuffers();
+	//void createConstantBuffers();
 
 	void CreateDirect3DContext(HWND* wndHandle);
 };
