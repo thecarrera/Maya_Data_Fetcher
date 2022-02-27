@@ -11,7 +11,7 @@ namespace NODETYPES
 	struct MATRICES {
 		DirectX::XMMATRIX objectMatrix{};
 		DirectX::XMMATRIX worldMatrix{};
-	};	
+	};
 
 	class Node {
 		std::string name{};
@@ -31,7 +31,7 @@ namespace NODETYPES
 
 		void addNewReferenceBy(Node* node, std::string attribute) {
 			if (this->referredBy.size() == 0) {
-				this->referredBy.emplace_back(node, attribute); 
+				this->referredBy.emplace_back(node, attribute);
 			}
 			else {
 				if (std::find(this->referredBy.begin(), this->referredBy.end(), std::pair(node, attribute)) == this->referredBy.end()) {
@@ -49,11 +49,11 @@ namespace NODETYPES
 		std::vector<Node*> parents{};
 		std::vector<Node*> children{};
 
-		MATRICES matrices {};
-		ComPtr<ID3D11Buffer> matrixBuffer {};
+		MATRICES matrices{};
+		ComPtr<ID3D11Buffer> matrixBuffer{};
 
 		const DirectX::XMFLOAT4X4 DTFMatrix(const double matrix[4][4]) const {
-			DirectX::XMFLOAT4X4 fMatrix {};
+			DirectX::XMFLOAT4X4 fMatrix{};
 			fMatrix._11 = static_cast<float>(matrix[0][0]);
 			fMatrix._12 = static_cast<float>(matrix[0][1]);
 			fMatrix._13 = static_cast<float>(matrix[0][2]);
@@ -78,8 +78,8 @@ namespace NODETYPES
 		}
 
 	public:
-		Transform(const std::string& name, const std::string& uuid, const std::string type) { 
-			this->setName(name); this->setUuid(uuid); this->setType(type); 
+		Transform(const std::string& name, const std::string& uuid, const std::string type) {
+			this->setName(name); this->setUuid(uuid); this->setType(type);
 			this->matrices.objectMatrix = DirectX::XMMatrixIdentity();
 			this->matrices.worldMatrix = DirectX::XMMatrixIdentity();
 		};
@@ -119,14 +119,14 @@ namespace NODETYPES
 		//	return &tempMatrix; 
 		//};
 		DirectX::XMMATRIX* getWorldMatrix() {
-			DirectX::XMMATRIX tempMatrix {matrices.objectMatrix};
+			DirectX::XMMATRIX tempMatrix{ matrices.objectMatrix };
 			for (size_t i = 0; i < parents.size(); ++i)
 			{
-				NODETYPES::Transform* parentTransform {dynamic_cast<NODETYPES::Transform*>(parents[i])};
-				DirectX::XMMATRIX parentMatrix {*parentTransform->getWorldMatrix()};
+				NODETYPES::Transform* parentTransform{ dynamic_cast<NODETYPES::Transform*>(parents[i]) };
+				DirectX::XMMATRIX parentMatrix{ *parentTransform->getWorldMatrix() };
 				tempMatrix = DirectX::XMMatrixMultiply(tempMatrix, parentMatrix);
 			}
-			return &tempMatrix; 			
+			return &tempMatrix;
 		}
 		//DirectX::XMMATRIX* getWorldMatrix() {return &matrices.worldMatrix};
 		DirectX::XMMATRIX* getObjectMatrix() { return &matrices.objectMatrix; };
@@ -134,8 +134,8 @@ namespace NODETYPES
 		UINT getMatricesStructSize() const { return sizeof(MATRICES); }
 
 		void setupBuffers(ID3D11Device* gDevice) {
-			HRESULT hr {};
-			D3D11_BUFFER_DESC mBufferDesc {
+			HRESULT hr{};
+			D3D11_BUFFER_DESC mBufferDesc{
 				.ByteWidth {sizeof(NODETYPES::MATRICES)},
 				.Usage {D3D11_USAGE_DYNAMIC},
 				.BindFlags {D3D11_BIND_CONSTANT_BUFFER},
@@ -143,16 +143,16 @@ namespace NODETYPES
 				.MiscFlags {},
 				.StructureByteStride {}
 			};
-			D3D11_SUBRESOURCE_DATA mData {.pSysMem {&this->matrices}};
+			D3D11_SUBRESOURCE_DATA mData{ .pSysMem {&this->matrices} };
 			hr = gDevice->CreateBuffer(&mBufferDesc, &mData, &this->matrixBuffer);
-			if (FAILED(hr)) {exit(-1);}
+			if (FAILED(hr)) { exit(-1); }
 		}
 
 		void resetWorldMatrix() { this->matrices.worldMatrix = DirectX::XMMatrixIdentity(); }
 		void resetObjectMatrix() { this->matrices.objectMatrix = DirectX::XMMatrixIdentity(); }
 
 		void addParent(NODETYPES::Node* parent) {
-			NODETYPES::Transform* transform {dynamic_cast<NODETYPES::Transform*>(parent)};
+			NODETYPES::Transform* transform{ dynamic_cast<NODETYPES::Transform*>(parent) };
 			if (transform->children.size() == 0) {
 				transform->children.emplace_back(parent);
 			}
@@ -160,7 +160,7 @@ namespace NODETYPES
 				if (std::find(
 					transform->children.begin(),
 					transform->children.end(),
-					parent) == transform->children.end()) 
+					parent) == transform->children.end())
 				{
 					transform->children.emplace_back(parent);
 				}
@@ -174,8 +174,8 @@ namespace NODETYPES
 				}
 			}
 		}
-		void addChild(NODETYPES::Node* child) { 
-			NODETYPES::Transform* transform {dynamic_cast<NODETYPES::Transform*>(child)};
+		void addChild(NODETYPES::Node* child) {
+			NODETYPES::Transform* transform{ dynamic_cast<NODETYPES::Transform*>(child) };
 			if (transform->parents.size() == 0) {
 				transform->parents.emplace_back(child);
 			}
@@ -200,7 +200,7 @@ namespace NODETYPES
 
 		void removeParent(NODETYPES::Node* parent)
 		{
-			NODETYPES::Transform* transform {dynamic_cast<NODETYPES::Transform*>(parent)};
+			NODETYPES::Transform* transform{ dynamic_cast<NODETYPES::Transform*>(parent) };
 			for (size_t i = 0; i < transform->children.size(); ++i)
 			{
 				if (transform->children[i]->getUuid() == this->getUuid())
@@ -241,19 +241,19 @@ namespace NODETYPES
 
 		struct VERTEX
 		{
-			float point[3]		{};
-			float normal[3]		{};
-			float tangent[3]	{};
-			float bitangent[3]	{};
-			float uv[2]			{};
+			float point[3]{};
+			float normal[3]{};
+			float tangent[3]{};
+			float bitangent[3]{};
+			float uv[2]{};
 		};
 
 		struct FACE
 		{
-			std::vector<VERTEX>		vertexList			{};
-			std::vector<UINT32>		vertexIDList		{};
-			ComPtr<ID3D11Buffer>	gVertexBuffer		{};
-			ComPtr<ID3D11Buffer>	gVertexIDBuffer		{};
+			std::vector<VERTEX>		vertexList{};
+			std::vector<UINT32>		vertexIDList{};
+			ComPtr<ID3D11Buffer>	gVertexBuffer{};
+			ComPtr<ID3D11Buffer>	gVertexIDBuffer{};
 		};
 
 	private:
@@ -270,8 +270,8 @@ namespace NODETYPES
 		//std::vector<size_t>		vertexList {}; //IDs
 		//#####################
 
-		std::vector<FACE> faces {};
-		std::vector<NODETYPES::Node*> shadingEngines {};
+		std::vector<FACE> faces{};
+		std::vector<NODETYPES::Node*> shadingEngines{};
 		NODETYPES::Node* transformer{};
 
 	public:
@@ -357,9 +357,9 @@ namespace NODETYPES
 			this->faces[faceIndex].vertexIDList.resize(vertexIDCount);
 
 			// Vertex Buffer
-				if (this->faces[faceIndex].gVertexBuffer.Get()) {
-					//this->faces[faceIndex].gVertexBuffer.Get()->Release();
-					this->faces[faceIndex].gVertexBuffer.Reset();
+			if (this->faces[faceIndex].gVertexBuffer.Get()) {
+				//this->faces[faceIndex].gVertexBuffer.Get()->Release();
+				this->faces[faceIndex].gVertexBuffer.Reset();
 			}
 
 			D3D11_BUFFER_DESC bufferDesc{
@@ -368,7 +368,7 @@ namespace NODETYPES
 			.BindFlags{D3D11_BIND_VERTEX_BUFFER},
 			.CPUAccessFlags{D3D11_CPU_ACCESS_WRITE}
 			};
-			
+
 			D3D11_SUBRESOURCE_DATA data{
 			.pSysMem {this->faces[faceIndex].vertexList.data()}
 			};
@@ -379,18 +379,18 @@ namespace NODETYPES
 				//this->faces[faceIndex].gVertexIDBuffer.Get()->Release();
 				this->faces[faceIndex].gVertexIDBuffer.Reset();
 			}
-			
+
 			bufferDesc.ByteWidth = UINT(sizeof(UINT32) * this->faces[faceIndex].vertexIDList.capacity());
 			bufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
 			data.pSysMem = this->faces[faceIndex].vertexIDList.data();
-			
+
 			hr = gDevice->CreateBuffer(&bufferDesc, &data, this->faces[faceIndex].gVertexIDBuffer.GetAddressOf());
 		}
 		void allocateFaces(UINT faceCount)
 		{
 			this->faces.resize(faceCount);
 		}
-		
+
 		//HRESULT allocateList(const size_t count, ID3D11Device* gDevice, const ComLib::ATTRIBUTE_TYPE attr) {
 		//	if (attr == ComLib::ATTRIBUTE_TYPE::VERTEX)
 		//	{
@@ -458,7 +458,7 @@ namespace NODETYPES
 		std::vector<VERTEX> getVertexList(UINT faceIndex) { return this->faces[faceIndex].vertexList; };
 		std::vector<UINT32> getVertexIDs(UINT faceIndex) { return this->faces[faceIndex].vertexIDList; }
 		ID3D11Buffer* getVertexBuffer(UINT faceIndex) { return this->faces[faceIndex].gVertexBuffer.Get(); }
-		ID3D11Buffer* getVertexIDBuffer(UINT faceIndex) { return this->faces[faceIndex].gVertexIDBuffer.Get();	}
+		ID3D11Buffer* getVertexIDBuffer(UINT faceIndex) { return this->faces[faceIndex].gVertexIDBuffer.Get(); }
 
 		ID3D11ShaderResourceView* getDiffuseBuffer();
 		ID3D11ShaderResourceView* getDefaultDiffuseBuffer();
@@ -467,7 +467,7 @@ namespace NODETYPES
 
 		void updateVertexListToBuffer(UINT faceIndex, ID3D11DeviceContext* gDeviceContext)
 		{
-			D3D11_MAPPED_SUBRESOURCE dataPtr {};
+			D3D11_MAPPED_SUBRESOURCE dataPtr{};
 			gDeviceContext->Map(this->faces[faceIndex].gVertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &dataPtr);
 			memcpy(dataPtr.pData, this->faces[faceIndex].vertexList.data(), sizeof(NODETYPES::Mesh::VERTEX) * this->faces[faceIndex].vertexList.size());
 			gDeviceContext->Unmap(this->faces[faceIndex].gVertexBuffer.Get(), 0);
@@ -488,11 +488,11 @@ namespace NODETYPES
 		void clearTransformReference();
 
 		//Used by nodes referenced to this node
-		void removeTransformReference() { 
+		void removeTransformReference() {
 			if (transformer)
 			{
 				this->transformer->removeReference(this->getUuid());
-				this->transformer = nullptr; 
+				this->transformer = nullptr;
 			}
 		}
 		void removeShadingEngine(std::string uuid) {
@@ -511,16 +511,16 @@ namespace NODETYPES
 		struct POINTDATA {
 			float intensity{};
 			float color[3]{};
-			DirectX::XMMATRIX worldMat {};
+			DirectX::XMMATRIX worldMat{};
 		};
 	private:
-		POINTDATA pointData {};
-		ComPtr<ID3D11Buffer> pointBuffer {};
+		POINTDATA pointData{};
+		ComPtr<ID3D11Buffer> pointBuffer{};
 
 		NODETYPES::Node* transformer{};
 
 	public:
-		
+
 		PointLight(const std::string& name, const std::string& uuid, const std::string type) { this->setName(name); this->setUuid(uuid); this->setType(type); };
 		~PointLight() {};
 
@@ -540,14 +540,15 @@ namespace NODETYPES
 				.MiscFlags {},
 				.StructureByteStride {}
 			};
-			D3D11_SUBRESOURCE_DATA mData {.pSysMem {&this->pointData}};
+			D3D11_SUBRESOURCE_DATA mData{ .pSysMem {&this->pointData} };
 			hr = gDevice->CreateBuffer(&mBufferDesc, &mData, &this->pointBuffer);
-			if (FAILED(hr)) {exit(-1);}
+			if (FAILED(hr)) { exit(-1); }
 		}
 
-		void setTransform(NODETYPES::Node* node) { 
+		void setTransform(NODETYPES::Node* node) {
 			node->addNewReferenceBy(this, "pointLight");
-			this->transformer = node; };
+			this->transformer = node;
+		};
 
 		POINTDATA* getPointData() {
 			return &this->pointData;
@@ -569,9 +570,9 @@ namespace NODETYPES
 		}
 
 		//For References
-		void removeTransformReference() { 
+		void removeTransformReference() {
 			this->transformer->removeReference(this->getUuid());
-			this->transformer = nullptr; 
+			this->transformer = nullptr;
 		}
 	};
 
@@ -581,7 +582,7 @@ namespace NODETYPES
 		NODETYPES::Node* transformMatrix{};
 		DirectX::XMMATRIX viewMatrix{};
 		DirectX::XMMATRIX projectionMatrix{};
-		ComPtr<ID3D11Buffer> projectionBuffer {};
+		ComPtr<ID3D11Buffer> projectionBuffer{};
 
 	public:
 		Camera(const std::string& name, const std::string& uuid, const std::string type) { this->setName(name); this->setUuid(uuid); this->setType(type); };
@@ -611,11 +612,11 @@ namespace NODETYPES
 				.MiscFlags {},
 				.StructureByteStride {}
 			};
-			D3D11_SUBRESOURCE_DATA mData {.pSysMem {&this->projectionMatrix}};
+			D3D11_SUBRESOURCE_DATA mData{ .pSysMem {&this->projectionMatrix} };
 			hr = gDevice->CreateBuffer(&mBufferDesc, &mData, &this->projectionBuffer);
 			if (FAILED(hr)) { exit(-1); }
 		}
-		void setTransformMatrix(NODETYPES::Node* node) { 
+		void setTransformMatrix(NODETYPES::Node* node) {
 			node->addNewReferenceBy(this, "transform");
 			this->transformMatrix = node;
 		}
@@ -631,19 +632,19 @@ namespace NODETYPES
 		}
 
 		DirectX::XMMATRIX* getProjectionMatrix() { return &this->projectionMatrix; };
-		DirectX::XMMATRIX* getViewMatrix() 
+		DirectX::XMMATRIX* getViewMatrix()
 		{
-				return &this->viewMatrix;
+			return &this->viewMatrix;
 		};
 		//NODETYPES::Node* getViewMatrix() {
 		//	return this->viewMatrix;
 		//};
-		void clearTransformMatrixReference() 
+		void clearTransformMatrixReference()
 		{
 			transformMatrix->removeReference(this->getUuid());
 			transformMatrix = nullptr;
 		};
-		void removeTransformMatrixReference() { 
+		void removeTransformMatrixReference() {
 			this->transformMatrix->removeReference(this->getUuid());
 			this->transformMatrix = nullptr;
 		}
@@ -652,15 +653,15 @@ namespace NODETYPES
 	class Texture : public Node
 	{
 	private:
-		bool textureExist {};
-		std::string filePath {};
+		bool textureExist{};
+		std::string filePath{};
 
-		ComPtr<ID3D11ShaderResourceView>	gTextureSRV	{};
-		ComPtr<ID3D11Resource>				gTexture	{};
+		ComPtr<ID3D11ShaderResourceView>	gTextureSRV{};
+		ComPtr<ID3D11Resource>				gTexture{};
 
 	public:
 		Texture(const std::string& name, const std::string& uuid, const std::string type) { this->setName(name); this->setUuid(uuid); this->setType(type); };
-		~Texture() {this->gTexture.Reset(); this->gTextureSRV.Reset();};
+		~Texture() { this->gTexture.Reset(); this->gTextureSRV.Reset(); };
 
 		HRESULT InitTexture(ID3D11Device* const gDevice, ID3D11DeviceContext* const gDeviceContext, const std::string filePath) {
 			wchar_t fileName[200]{};
@@ -765,12 +766,12 @@ namespace NODETYPES
 		ComPtr<ID3D11ShaderResourceView>	defaultTextureSRV[4]{};
 
 	public:
-		Lambert(std::string& name, std::string& uuid, ID3D11Device* gDevice, const std::string type) { 
-			HRESULT hr {};
+		Lambert(std::string& name, std::string& uuid, ID3D11Device* gDevice, const std::string type) {
+			HRESULT hr{};
 			this->setName(name);
 			this->setUuid(uuid);
 			this->setType(type);
-			
+
 			D3D11_TEXTURE2D_DESC defaultTextureDesc{
 				.Width			{1},
 				.Height			{1},
@@ -817,7 +818,7 @@ namespace NODETYPES
 				break;
 			}
 		};*/
-		void setChannels(uint32_t RGBA, ID3D11DeviceContext* gDeviceContext ,ComLib::ATTRIBUTE_TYPE attribute) {
+		void setChannels(uint32_t RGBA, ID3D11DeviceContext* gDeviceContext, ComLib::ATTRIBUTE_TYPE attribute) {
 			D3D11_MAPPED_SUBRESOURCE dataPtr{};
 			switch (attribute)
 			{
@@ -996,12 +997,12 @@ namespace NODETYPES
 		std::vector<NODETYPES::Node*> shadingEngines{};
 
 	public:
-		Blinn(std::string& name, std::string& uuid, ID3D11Device* gDevice, const std::string type) { 
-			HRESULT hr {};
+		Blinn(std::string& name, std::string& uuid, ID3D11Device* gDevice, const std::string type) {
+			HRESULT hr{};
 			this->setName(name);
 			this->setUuid(uuid);
 			this->setType(type);
-		
+
 			D3D11_TEXTURE2D_DESC defaultTextureDesc{
 				.Width			{1},
 				.Height			{1},
@@ -1207,7 +1208,7 @@ namespace NODETYPES
 	class ShadingEngine : public Node
 	{
 	private:
-		std::vector<NODETYPES::Node*> materials {};
+		std::vector<NODETYPES::Node*> materials{};
 
 	public:
 		ShadingEngine(std::string& name, std::string& uuid, const std::string type) { this->setName(name); this->setUuid(uuid); this->setType(type); };
@@ -1269,7 +1270,7 @@ namespace NODETYPES
 			{
 				return dynamic_cast<NODETYPES::Lambert*>(this->materials[0])->getDiffuseMap();
 			}
-			else if(this->materials[0]->getType() == "blinn")
+			else if (this->materials[0]->getType() == "blinn")
 			{
 				return dynamic_cast<NODETYPES::Blinn*>(this->materials[0])->getDiffuseMap();
 			}
@@ -1313,12 +1314,12 @@ namespace NODETYPES
 			for (size_t i = 0; i < this->materials.size(); ++i)
 			{
 				if (this->materials[i]->getType() == "lambert") {
-					NODETYPES::Lambert* lambert {dynamic_cast<NODETYPES::Lambert*>(this->materials[i])};
+					NODETYPES::Lambert* lambert{ dynamic_cast<NODETYPES::Lambert*>(this->materials[i]) };
 					lambert->removeReference(this->getUuid());
 				}
 				else if (this->materials[i]->getType() == "blinn")
 				{
-					NODETYPES::Blinn* blinn {dynamic_cast<NODETYPES::Blinn*>(this->materials[i])};
+					NODETYPES::Blinn* blinn{ dynamic_cast<NODETYPES::Blinn*>(this->materials[i]) };
 					blinn->removeReference(this->getUuid());
 				}
 			}

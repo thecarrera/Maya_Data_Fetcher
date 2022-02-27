@@ -1296,8 +1296,8 @@ void pSendVertexData(MObject& object)
 					messageSize += sizeof(UINT);
 					memcpy(msg.data() + messageSize, &counter, sizeof(int));
 					messageSize += sizeof(int);
-					memcpy(msg.data() + messageSize, vertexList.data(), sizeof(VERTEX) * (counter + 1));
-					messageSize += sizeof(VERTEX) * (counter + 1);
+					memcpy(msg.data() + messageSize, vertexList.data(), sizeof(VERTEX) * (static_cast<UINT64>(counter) + 1));
+					messageSize += sizeof(VERTEX) * (static_cast<UINT64>(counter) + 1);
 			
 					comlib.addToPackage(
 						msg.data(),
